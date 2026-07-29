@@ -122,6 +122,9 @@ impl Client {
     ) -> CliResult<(T, Option<String>)> {
         let (response, new_token) = self.check_response(response).await?;
         let text = response.text().await?;
+        if text.is_empty() {
+            return Err(CliError::Config("empty response body".to_owned()));
+        }
         let value = serde_json::from_str(&text)?;
         Ok((value, new_token))
     }
@@ -205,6 +208,24 @@ impl Client {
         let (value, new_token) = self.json_response(response).await?;
         self.handle_token(new_token, config, profile_name)?;
         Ok(value)
+    }
+
+    /// POST JSON body, expect empty/no response body. Returns the new token if Set-Token header present.
+    pub async fn post_no_body<B: Serialize + ?Sized>(
+        &mut self,
+        path: &str,
+        body: &B,
+        config: &mut ClientConfig,
+        profile_name: Option<&str>,
+    ) -> CliResult<Option<String>> {
+        let response = self
+            .request(Method::POST, path, &[])?
+            .json(body)
+            .send()
+            .await?;
+        let (_, new_token) = self.check_response(response).await?;
+        self.handle_token(new_token.clone(), config, profile_name)?;
+        Ok(new_token)
     }
 
     pub async fn patch<T: DeserializeOwned, B: Serialize + ?Sized>(

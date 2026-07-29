@@ -1,3 +1,5 @@
+use std::io::{self, Write};
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -20,17 +22,6 @@ struct LoginRequest {
 struct CaptchaResponse {
     id: String,
     challenge: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct LoginEnvelope {
-    data: Option<LoginData>,
-    error: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct LoginData {
-    token: Option<String>,
 }
 
 pub async fn login(
@@ -62,7 +53,7 @@ pub async fn login(
     let account = if let Some(a) = args.account {
         a
     } else {
-        rpassword::prompt_password("Account: ")?
+        prompt_input("Account: ")?
     };
 
     let password = if let Some(p) = args.password {
@@ -89,10 +80,10 @@ pub async fn login(
         ));
     }
 
-    // 2. Solve PoW
+    // 2. Solve PoW — answer is challenge+nonce (full SHA256 input)
     let answer = solve_pow(&captcha.challenge);
 
-    // 3. Login
+    // 3. Login — server returns empty body, token is in Set-Token header
     let login_req = LoginRequest {
         account,
         password,
@@ -100,39 +91,20 @@ pub async fn login(
         captcha_answer: answer,
     };
 
-    let result: LoginEnvelope = client
-        .post("account/login", &login_req, config, profile_name)
+    let token = client
+        .post_no_body("account/login", &login_req, config, profile_name)
         .await?;
 
-    if let Some(err) = result.error {
-        return Err(CliError::Api {
-            status: reqwest::StatusCode::UNAUTHORIZED,
-            message: err,
-        });
-    }
-
-    let token = result
-        .data
-        .and_then(|d| d.token)
-        .or_else(|| client.token.clone());
-
     if let Some(ref token) = token {
-        client.token = Some(token.clone());
-        let profile = config.active_profile_mut(profile_name);
-        profile.token = Some(token.clone());
-        config.save()?;
-
-        // Try to get profile to display nickname
-        let profile_info = client
+        let profile_result = client
             .get_value("account/profile", &[], config, profile_name)
             .await
             .ok();
-        let nickname = profile_info
+        let nickname = profile_result
             .as_ref()
             .and_then(|v| v.get("nickname"))
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
-
         if json {
             output::print_json(&serde_json::json!({
                 "token": token,
@@ -156,7 +128,6 @@ pub async fn logout(
     config: &mut ClientConfig,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    // POST /api/account/logout — ignore failure
     let _ = client
         .post_value("account/logout", &serde_json::json!({}), config, profile_name)
         .await;
@@ -193,8 +164,13 @@ pub async fn status(
             "nickname": profile_info.as_ref().and_then(|v| v.get("nickname")).and_then(|v| v.as_str()),
         }));
     } else {
-        let pairs = vec![
-            ("URL", profile.url.as_str()),
+        let url_display = if profile.url.is_empty() {
+            "(not configured)"
+        } else {
+            profile.url.as_str()
+        };
+        let pairs: Vec<(&str, &str)> = vec![
+            ("URL", url_display),
             (
                 "Status",
                 if client.token.is_some() {
@@ -249,11 +225,9 @@ pub async fn register(
         let profile = config.active_profile_mut(profile_name);
         profile.url = url.clone();
     }
-
-    // Interactive registration
-    let account = rpassword::prompt_password("Account: ")?;
-    let nickname = rpassword::prompt_password("Nickname: ")?;
-    let email = rpassword::prompt_password("Email: ")?;
+    let account = prompt_input("Account: ")?;
+    let nickname = prompt_input("Nickname: ")?;
+    let email = prompt_input("Email: ")?;
     let password = rpassword::prompt_password("Password: ")?;
 
     // Get captcha
@@ -300,8 +274,13 @@ pub fn status_local(
             "logged_in": profile.token.is_some(),
         }));
     } else {
-        let pairs = vec![
-            ("URL", if profile.url.is_empty() { "(not configured)" } else { profile.url.as_str() }),
+        let url_display = if profile.url.is_empty() {
+            "(not configured)"
+        } else {
+            profile.url.as_str()
+        };
+        let pairs: Vec<(&str, &str)> = vec![
+            ("URL", url_display),
             ("Status", if profile.token.is_some() { "Logged in" } else { "Not logged in" }),
         ];
         output::print_key_value(&pairs);
@@ -310,6 +289,7 @@ pub fn status_local(
 }
 
 /// Solve a Ret2Shell PoW challenge. Format: `difficulty#seed`
+/// Returns the full SHA256 candidate (seed+nonce), not just the nonce.
 fn solve_pow(challenge: &str) -> String {
     use ring::digest::{digest, SHA256};
 
@@ -324,7 +304,7 @@ fn solve_pow(challenge: &str) -> String {
         let hash = digest(&SHA256, candidate.as_bytes());
         let hex_hash = hex::encode(hash);
         if hex_hash.starts_with(&target_prefix) {
-            return i.to_string();
+            return candidate;
         }
         if i == u64::MAX {
             break;
@@ -332,4 +312,13 @@ fn solve_pow(challenge: &str) -> String {
     }
 
     "0".to_owned()
+}
+
+fn prompt_input(prompt: &str) -> CliResult<String> {
+    let mut stdout = io::stdout();
+    write!(stdout, "{prompt}")?;
+    stdout.flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    Ok(input.trim().to_owned())
 }
