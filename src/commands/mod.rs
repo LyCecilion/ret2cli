@@ -37,14 +37,13 @@ pub fn use_profile(config: &mut ClientConfig, args: UseArgs) -> CliResult<()> {
     output::success(&format!("Switched to profile '{}'", args.profile));
     Ok(())
 }
-
-pub fn use_game(args: UseGameArgs, json: bool) -> CliResult<()> {
-    // SAFETY: set_var in single-threaded CLI startup context
-    unsafe { std::env::set_var("R2S_GAME", &args.game) };
+pub fn use_game(args: UseGameArgs, config: &mut ClientConfig, json: bool) -> CliResult<()> {
+    config.default_game = Some(args.game.clone());
+    config.save()?;
     if json {
         output::print_json(&serde_json::json!({ "game": args.game }));
     } else {
-        output::success(&format!("Active game set to '{}'", args.game));
+        output::success(&format!("Default game set to '{}'", args.game));
     }
     Ok(())
 }

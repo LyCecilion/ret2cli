@@ -10,6 +10,8 @@ pub struct ClientConfig {
     pub default: Profile,
     #[serde(default)]
     pub profiles: HashMap<String, Profile>,
+    #[serde(default)]
+    pub default_game: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

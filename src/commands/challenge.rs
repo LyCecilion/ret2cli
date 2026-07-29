@@ -1,6 +1,6 @@
+use std::{collections::HashSet, path::PathBuf};
+
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::path::PathBuf;
 use tabled::Tabled;
 
 use crate::{
@@ -14,19 +14,40 @@ use crate::{
     output, resolve_challenge_id, resolve_game_id,
 };
 
+// --- API response types ---
+
 #[derive(Debug, Deserialize, Serialize)]
 struct ChallengeInfo {
     id: i64,
     name: String,
-    score: Option<i64>,
-    tags: Option<Value>,
-    solved: Option<bool>,
-    is_enabled: Option<bool>,
     content: Option<String>,
-    attachments: Option<Value>,
-    instance: Option<Value>,
-    hints: Option<Value>,
+    score: Option<i64>,
+    tag: Option<Vec<TagEntry>>,
+    score_rule: Option<ScoreRule>,
+    bucket: Option<String>,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+struct TagEntry {
+    name: String,
+    #[serde(default)]
+    primary: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct ScoreRule {
+    initial: Option<i64>,
+    minimum: Option<i64>,
+    decay: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SolveEntry {
+    challenge_id: i64,
+    solved: Option<bool>,
+}
+
+// --- Table row ---
 
 #[derive(Tabled)]
 struct ChallengeRow {
@@ -42,6 +63,8 @@ struct ChallengeRow {
     solved: String,
 }
 
+// --- Commands ---
+
 pub async fn challenges(
     client: &mut Client,
     config: &mut ClientConfig,
@@ -54,32 +77,31 @@ pub async fn challenges(
         return Err(CliError::Config("specify --game".to_owned()));
     };
 
+    // Fetch challenge list
     let path = format!("game/{game_id}/challenge");
-
-
     let (challenges, _total): (Vec<ChallengeInfo>, i64) =
         client.get(&path, &[], config, profile_name).await?;
+
+    // Fetch solve list to determine solved status
+    let solved_ids = fetch_solved_ids(client, config, profile_name, game_id).await;
 
     if json {
         output::print_json(&challenges);
     } else {
         let rows: Vec<ChallengeRow> = challenges
             .into_iter()
-            .map(|c| ChallengeRow {
-                id: c.id,
-                name: c.name,
-                score: c
-                    .score
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "—".to_owned()),
-                tags: format_tags(&c.tags),
-                solved: if c.solved.unwrap_or(false) {
-                    "✓".to_owned()
-                } else if c.is_enabled.unwrap_or(true) {
-                    "—".to_owned()
-                } else {
-                    "locked".to_owned()
-                },
+            .map(|c| {
+                let is_solved = solved_ids.contains(&c.id);
+                ChallengeRow {
+                    id: c.id,
+                    name: c.name,
+                    score: c
+                        .score
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "—".to_owned()),
+                    tags: format_tags(&c.tag),
+                    solved: if is_solved { "✓".to_owned() } else { "—".to_owned() },
+                }
             })
             .collect();
         output::print_table(&rows);
@@ -106,28 +128,25 @@ pub async fn view(
     let path = format!("game/{game_id}/challenge/{challenge_id}");
     let challenge: ChallengeInfo = client.get(&path, &[], config, profile_name).await?;
 
+    // Check if solved
+    let solved_ids = fetch_solved_ids(client, config, profile_name, game_id).await;
+    let is_solved = solved_ids.contains(&challenge.id);
+
     if json {
         output::print_json(&challenge);
     } else {
-        let tags = format_tags(&challenge.tags);
+        let tags = format_tags(&challenge.tag);
         let score_str = challenge
             .score
             .map(|s| s.to_string())
             .unwrap_or_else(|| "—".to_owned());
+        let status = if is_solved { "Solved" } else { "Unsolved" };
+
         let pairs: Vec<(&str, &str)> = vec![
             ("Name", challenge.name.as_str()),
             ("Score", &score_str),
             ("Tags", &tags),
-            (
-                "Status",
-                if challenge.solved.unwrap_or(false) {
-                    "Solved"
-                } else if challenge.is_enabled.unwrap_or(true) {
-                    "Unsolved"
-                } else {
-                    "Locked"
-                },
-            ),
+            ("Status", status),
         ];
         output::print_key_value(&pairs);
 
@@ -136,23 +155,12 @@ pub async fn view(
             output::print_markdown(content);
         }
 
-        // Attachments
-        if let Some(ref attachments) = challenge.attachments {
-            if let Some(arr) = attachments.as_array() {
+        // Bucket (attachment info)
+        if let Some(ref bucket) = challenge.bucket {
+            if !bucket.is_empty() {
                 println!();
-                println!("Attachments:");
-                for att in arr {
-                    if let Some(name) = att.get("name").and_then(|v| v.as_str()) {
-                        println!("  • {name}");
-                    }
-                }
+                println!("Attachments: available (use 'download' command)");
             }
-        }
-
-        // Instance
-        if let Some(ref instance) = challenge.instance {
-            println!();
-            println!("Instance: {:?}", instance);
         }
     }
 
@@ -217,6 +225,8 @@ pub async fn solve(
     Ok(())
 }
 
+// --- Hints ---
+
 #[derive(Deserialize, Serialize)]
 struct HintInfo {
     id: i64,
@@ -241,7 +251,6 @@ pub async fn hints(
         resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
 
     let path = format!("game/{game_id}/challenge/{challenge_id}/hint");
-
 
     let (hints, _total): (Vec<HintInfo>, i64) =
         client.get(&path, &[], config, profile_name).await?;
@@ -304,9 +313,7 @@ pub async fn hint(
     let body = if let Some(hint_id) = args.id {
         serde_json::json!({ "id": hint_id })
     } else {
-        // List available hints
         let list_path = format!("game/{game_id}/challenge/{challenge_id}/hint");
-
         let (hints, _total): (Vec<HintInfo>, i64) =
             client.get(&list_path, &[], config, profile_name).await?;
 
@@ -473,13 +480,50 @@ pub async fn download(
     Ok(())
 }
 
-fn format_tags(tags: &Option<Value>) -> String {
+// --- Helpers ---
+
+fn format_tags(tags: &Option<Vec<TagEntry>>) -> String {
     match tags {
-        Some(Value::Array(arr)) => arr
+        Some(arr) if !arr.is_empty() => arr
             .iter()
-            .filter_map(|v| v.as_str())
+            .filter(|t| t.primary)
+            .map(|t| t.name.as_str())
             .collect::<Vec<_>>()
             .join(", "),
         _ => "—".to_owned(),
     }
+}
+
+/// Fetch the set of solved challenge IDs for a game.
+/// The solve endpoint returns a flat array (no [data, total] wrapper).
+async fn fetch_solved_ids(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    game_id: i64,
+) -> HashSet<i64> {
+    let path = format!("game/{game_id}/solve");
+    // Try as flat Vec first, then as tuple
+    if let Ok(solves) = client
+        .get::<Vec<SolveEntry>>(&path, &[("page_size", "500")], config, profile_name)
+        .await
+    {
+        return solves
+            .into_iter()
+            .filter(|s| s.solved.unwrap_or(false))
+            .map(|s| s.challenge_id)
+            .collect();
+    }
+    // Fallback: might be [data, total] tuple
+    if let Ok((solves, _total)) = client
+        .get::<(Vec<SolveEntry>, i64)>(&path, &[("page_size", "500")], config, profile_name)
+        .await
+    {
+        return solves
+            .into_iter()
+            .filter(|s| s.solved.unwrap_or(false))
+            .map(|s| s.challenge_id)
+            .collect();
+    }
+    HashSet::new()
 }

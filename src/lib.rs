@@ -30,7 +30,7 @@ pub async fn run(cli: Cli) -> CliResult<()> {
             return commands::use_profile(&mut config, args.clone());
         }
         Commands::UseGame(args) => {
-            return commands::use_game(args.clone(), json);
+            return commands::use_game(args.clone(), &mut config, json);
         }
         _ => {}
     }
@@ -100,11 +100,16 @@ async fn resolve_game_id(
     profile_name: Option<&str>,
     game: Option<&str>,
 ) -> CliResult<Option<i64>> {
-    let Some(game) = game else {
-        return Ok(None);
+    let game = match game {
+        Some(g) => g.to_owned(),
+        None => match &config.default_game {
+            Some(d) => d.clone(),
+            None => return Ok(None),
+        },
     };
+    let game_ref = game.as_str();
     // Try parsing as numeric ID first
-    if let Ok(id) = game.parse::<i64>() {
+    if let Ok(id) = game_ref.parse::<i64>() {
         return Ok(Some(id));
     }
     // Response: [data_array, total_count]
@@ -118,18 +123,18 @@ async fn resolve_game_id(
         .get("game", &[("page_size", "100")], config, profile_name)
         .await?;
     for g in &games {
-        if g.name.eq_ignore_ascii_case(game) {
+        if g.name.eq_ignore_ascii_case(game_ref) {
             return Ok(Some(g.id));
         }
     }
     // Try prefix match
-    let prefix_matches: Vec<_> = games.iter().filter(|g| g.name.to_lowercase().starts_with(&game.to_lowercase())).collect();
+    let prefix_matches: Vec<_> = games.iter().filter(|g| g.name.to_lowercase().starts_with(&game_ref.to_lowercase())).collect();
     if prefix_matches.len() == 1 {
         return Ok(Some(prefix_matches[0].id));
     }
     Err(CliError::Config(format!(
         "game '{}' not found. Use numeric ID or exact name.",
-        game
+        game_ref
     )))
 }
 
