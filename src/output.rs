@@ -40,10 +40,6 @@ pub fn success(msg: &str) {
     println!("{} {}", "✓".green().bold(), msg);
 }
 
-pub fn error(msg: &str) {
-    eprintln!("{} {}", "✗".red().bold(), msg);
-}
-
 pub fn info(msg: &str) {
     println!("{} {}", "ℹ".blue().bold(), msg);
 }

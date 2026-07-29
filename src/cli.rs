@@ -1,364 +1,260 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Parser, Debug)]
-#[command(
-    author,
-    version,
-    about = "CLI client for Ret2Shell CTF platform"
-)]
+#[command(author, version, about = "CLI client for Ret2Shell CTF platform")]
 pub struct Cli {
-    /// Output as JSON instead of formatted text
+    /// Emit one JSON value on stdout
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Profile name to use from config
+    /// Use a named local connection profile
     #[arg(long, global = true)]
     pub profile: Option<String>,
 
-    /// Override the configured API base URL
+    /// Override the API base URL for this invocation
     #[arg(long, global = true)]
     pub url: Option<String>,
 
-    /// Override the configured token
+    /// Override the bearer token for this invocation
     #[arg(long, global = true)]
     pub token: Option<String>,
 
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Authenticate with a Ret2Shell instance
-    #[command(name = "login")]
-    Login(LoginArgs),
-
-    /// Log out of the current profile
-    #[command(name = "logout")]
-    Logout,
-
-    /// Show authentication status
-    #[command(name = "status")]
-    Status,
-
-    /// Register a new account
-    #[command(name = "register")]
-    Register(RegisterArgs),
-
-    /// List available games
-    #[command(name = "games")]
-    Games(GameListArgs),
-
-    /// View game details
-    #[command(name = "game")]
-    Game(GameViewArgs),
-
-    /// Show scoreboard for a game
-    #[command(name = "scoreboard")]
-    Scoreboard(ScoreboardArgs),
-
-    /// List challenges in a game
-    #[command(name = "challenges")]
-    Challenges(ChallengeListArgs),
-
-    /// View challenge details
-    #[command(name = "view")]
-    View(ChallengeViewArgs),
-
-    /// Submit a flag
-    #[command(name = "solve")]
-    Solve(SolveArgs),
-
-    /// List available hints for a challenge
-    #[command(name = "hints")]
-    Hints(HintsArgs),
-
-    /// Unlock a hint
-    #[command(name = "hint")]
-    Hint(HintArgs),
-
-    /// Start a challenge instance
-    #[command(name = "start")]
-    Start(StartArgs),
-
-    /// Stop a challenge instance
-    #[command(name = "stop")]
-    Stop(StopArgs),
-
-    /// Download challenge attachments
-    #[command(name = "download")]
-    Download(DownloadArgs),
-
-    /// List teams in a game
-    #[command(name = "teams")]
-    Teams(TeamListArgs),
-
-    /// View team details
-    #[command(name = "team")]
-    Team(TeamViewArgs),
-
-    /// View my team
-    #[command(name = "my")]
-    My(MyTeamArgs),
-
-    /// Create a team
-    #[command(name = "team-create")]
-    TeamCreate(TeamCreateArgs),
-
-    /// Join a team by token
-    #[command(name = "team-join")]
-    TeamJoin(TeamJoinArgs),
-
-    /// Leave your current team
-    #[command(name = "team-leave")]
-    TeamLeave(TeamLeaveArgs),
-
-    /// View your profile
-    #[command(name = "profile")]
-    Profile,
-
-    /// View your submission history
-    #[command(name = "submissions")]
-    Submissions(SubmissionsArgs),
-
+    /// Account authentication and identity
+    Account {
+        #[command(subcommand)]
+        command: AccountCommand,
+    },
+    /// Manage local Ret2Shell connection profiles
+    Profile {
+        #[command(subcommand)]
+        command: ProfileCommand,
+    },
+    /// Browse and select games
+    Game {
+        #[command(subcommand)]
+        command: GameCommand,
+    },
+    /// Work with challenges in the selected game
+    Challenge {
+        #[command(subcommand)]
+        command: ChallengeCommand,
+    },
+    /// Manage teams in the selected game
+    Team {
+        #[command(subcommand)]
+        command: TeamCommand,
+    },
+    /// View submission history
+    Submission {
+        #[command(subcommand)]
+        command: SubmissionCommand,
+    },
+    /// Open the guided interactive interface
+    Interactive,
     /// Generate shell completions
-    #[command(name = "completion")]
     Completion(CompletionArgs),
-
-    /// Switch default profile
-    #[command(name = "use")]
-    Use(UseArgs),
-
-    /// Set default game for current session
-    #[command(name = "use-game")]
-    UseGame(UseGameArgs),
 }
 
-// --- Auth ---
+#[derive(Subcommand, Debug)]
+pub enum AccountCommand {
+    Login(LoginArgs),
+    Logout,
+    Register(RegisterArgs),
+    Status,
+    Show,
+}
 
-#[derive(clap::Args, Debug, Clone)]
+#[derive(Subcommand, Debug)]
+pub enum ProfileCommand {
+    List,
+    Show { name: Option<String> },
+    Add(ProfileAddArgs),
+    Use { name: String },
+    Remove(ProfileRemoveArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum GameCommand {
+    List(GameListArgs),
+    Show { game: Option<String> },
+    Use { game: String },
+    Scoreboard(GameContextArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ChallengeCommand {
+    List(GameContextArgs),
+    Show(ChallengeArgs),
+    Submit(SubmitArgs),
+    Hints(ChallengeArgs),
+    UnlockHint(UnlockHintArgs),
+    Start(ChallengeArgs),
+    Stop(ChallengeArgs),
+    Files(ChallengeArgs),
+    Download(DownloadArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TeamCommand {
+    List(GameContextArgs),
+    Show(TeamShowArgs),
+    Mine(GameContextArgs),
+    Create(TeamCreateArgs),
+    Join(TeamJoinArgs),
+    Leave(TeamLeaveArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SubmissionCommand {
+    List(GameContextArgs),
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct LoginArgs {
-    /// URL of the Ret2Shell instance
-    #[arg(long)]
-    pub url: Option<String>,
-
-    /// Account/username
     #[arg(long)]
     pub account: Option<String>,
-
-    /// Password (insecure, prefer interactive prompt)
+    /// Insecure on shared systems; omit to use a hidden TTY prompt
     #[arg(long)]
     pub password: Option<String>,
 }
 
-#[derive(clap::Args, Debug, Clone)]
+#[derive(Args, Debug, Clone)]
 pub struct RegisterArgs {
-    /// URL of the Ret2Shell instance
     #[arg(long)]
-    pub url: Option<String>,
+    pub account: Option<String>,
+    #[arg(long)]
+    pub nickname: Option<String>,
+    #[arg(long)]
+    pub email: Option<String>,
+    #[arg(long)]
+    pub password: Option<String>,
 }
 
-// --- Game ---
+#[derive(Args, Debug, Clone)]
+pub struct ProfileAddArgs {
+    pub name: String,
+    #[arg(long)]
+    pub url: String,
+    #[arg(long)]
+    pub use_now: bool,
+}
 
-#[derive(clap::Args, Debug, Clone)]
+#[derive(Args, Debug, Clone)]
+pub struct ProfileRemoveArgs {
+    pub name: String,
+    #[arg(long)]
+    pub yes: bool,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum GameType {
+    Training,
+    Game,
+}
+
+impl GameType {
+    pub fn api_value(self) -> &'static str {
+        match self {
+            Self::Training => "0",
+            Self::Game => "1",
+        }
+    }
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct GameListArgs {
-    /// Page number
-    #[arg(long, default_value = "1")]
+    #[arg(long, default_value_t = 1)]
     pub page: u32,
-
-    /// Items per page
-    #[arg(long, default_value = "20")]
+    #[arg(long, default_value_t = 20)]
     pub page_size: u32,
-
-    /// Filter by game type
-    #[arg(long)]
-    pub r#type: Option<String>,
+    #[arg(long, value_enum)]
+    pub r#type: Option<GameType>,
 }
 
-#[derive(clap::Args, Debug, Clone)]
-pub struct GameViewArgs {
-    /// Game name or ID
-    pub game: Option<String>,
-}
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct ScoreboardArgs {
-    /// Game name or ID
+#[derive(Args, Debug, Clone, Default)]
+pub struct GameContextArgs {
+    /// Override the selected game by ID, exact name, or unique prefix
     #[arg(long)]
     pub game: Option<String>,
 }
 
-// --- Challenge ---
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct ChallengeListArgs {
-    /// Game name or ID
-    #[arg(long)]
-    pub game: Option<String>,
-}
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct ChallengeViewArgs {
-    /// Challenge name or ID
+#[derive(Args, Debug, Clone)]
+pub struct ChallengeArgs {
     pub challenge: String,
-
-    /// Game name or ID
     #[arg(long)]
     pub game: Option<String>,
 }
 
-#[derive(clap::Args, Debug, Clone)]
-pub struct SolveArgs {
-    /// Challenge name or ID
+#[derive(Args, Debug, Clone)]
+pub struct SubmitArgs {
     pub challenge: String,
-
-    /// Flag to submit (prompts if omitted)
     #[arg(long)]
     pub flag: Option<String>,
-
-    /// Game name or ID
     #[arg(long)]
     pub game: Option<String>,
 }
 
-#[derive(clap::Args, Debug, Clone)]
-pub struct HintsArgs {
-    /// Challenge name or ID
+#[derive(Args, Debug, Clone)]
+pub struct UnlockHintArgs {
     pub challenge: String,
-
-    /// Game name or ID
-    #[arg(long)]
-    pub game: Option<String>,
-}
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct HintArgs {
-    /// Challenge name or ID
-    pub challenge: String,
-
-    /// Specific hint ID to unlock
     #[arg(long)]
     pub id: Option<i64>,
-
-    /// Game name or ID
     #[arg(long)]
     pub game: Option<String>,
 }
 
-#[derive(clap::Args, Debug, Clone)]
-pub struct StartArgs {
-    /// Challenge name or ID
-    pub challenge: String,
-
-    /// Game name or ID
-    #[arg(long)]
-    pub game: Option<String>,
-}
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct StopArgs {
-    /// Challenge name or ID
-    pub challenge: String,
-
-    /// Game name or ID
-    #[arg(long)]
-    pub game: Option<String>,
-}
-
-#[derive(clap::Args, Debug, Clone)]
+#[derive(Args, Debug, Clone)]
 pub struct DownloadArgs {
-    /// Challenge name or ID
     pub challenge: String,
-
-    /// Output file path (default: current directory)
+    #[arg(long)]
+    pub file: Option<String>,
+    /// Output directory, or an output file when --file selects one attachment
     #[arg(long)]
     pub output: Option<String>,
-
-    /// Game name or ID
     #[arg(long)]
     pub game: Option<String>,
 }
 
-// --- Team ---
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct TeamListArgs {
-    /// Game name or ID
+#[derive(Args, Debug, Clone)]
+pub struct TeamShowArgs {
+    pub team: String,
     #[arg(long)]
     pub game: Option<String>,
 }
 
-#[derive(clap::Args, Debug, Clone)]
-pub struct TeamViewArgs {
-    /// Team name or ID
-    pub team: Option<String>,
-
-    /// Game name or ID
-    #[arg(long)]
-    pub game: Option<String>,
-}
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct MyTeamArgs {
-    /// Game name or ID
-    #[arg(long)]
-    pub game: Option<String>,
-}
-
-#[derive(clap::Args, Debug, Clone)]
+#[derive(Args, Debug, Clone)]
 pub struct TeamCreateArgs {
-    /// Game name or ID
+    #[arg(long)]
+    pub name: Option<String>,
+    #[arg(long)]
+    pub tag: Option<String>,
     #[arg(long)]
     pub game: Option<String>,
 }
 
-#[derive(clap::Args, Debug, Clone)]
+#[derive(Args, Debug, Clone)]
 pub struct TeamJoinArgs {
-    /// Game name or ID
+    pub token: Option<String>,
     #[arg(long)]
     pub game: Option<String>,
-
-    /// Team invitation token
-    pub token: String,
 }
 
-#[derive(clap::Args, Debug, Clone)]
+#[derive(Args, Debug, Clone)]
 pub struct TeamLeaveArgs {
-    /// Game name or ID
     #[arg(long)]
     pub game: Option<String>,
-}
-
-// --- Profile & Submissions ---
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct SubmissionsArgs {
-    /// Game ID
     #[arg(long)]
-    pub game: Option<i64>,
+    pub yes: bool,
 }
 
-// --- Shell completions ---
-
-#[derive(clap::Args, Debug, Clone)]
+#[derive(Args, Debug, Clone)]
 pub struct CompletionArgs {
-    /// Shell to generate completions for
     #[arg(value_enum)]
     pub shell: clap_complete::Shell,
-}
-
-// --- Use profile ---
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct UseArgs {
-    /// Profile name to switch to
-    pub profile: String,
-}
-
-// --- Use game ---
-
-#[derive(clap::Args, Debug, Clone)]
-pub struct UseGameArgs {
-    /// Game name or ID
-    pub game: String,
 }

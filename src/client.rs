@@ -2,10 +2,10 @@ use std::path::Path;
 
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{
-    header::{AUTHORIZATION, HeaderMap, HeaderValue},
     Client as HttpClient, Method, Response, Url,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use tokio::io::AsyncWriteExt;
 
@@ -42,8 +42,7 @@ impl Client {
         ))
         .map_err(|e| CliError::Config(format!("invalid URL: {e}")))?;
         if !query.is_empty() {
-            url.query_pairs_mut()
-                .extend_pairs(query.iter().copied());
+            url.query_pairs_mut().extend_pairs(query.iter().copied());
         }
         Ok(url)
     }
@@ -72,10 +71,7 @@ impl Client {
             .headers(self.auth_headers()?))
     }
 
-    async fn check_response(
-        &self,
-        response: Response,
-    ) -> CliResult<(Response, Option<String>)> {
+    async fn check_response(&self, response: Response) -> CliResult<(Response, Option<String>)> {
         // Extract Set-Token header before consuming the response
         let new_token = response
             .headers()
@@ -140,7 +136,7 @@ impl Client {
             if self.token.as_deref() != Some(new) {
                 self.token = Some(new.clone());
                 // Persist to config
-                let profile = config.active_profile_mut(profile_name);
+                let profile = config.active_profile_mut(profile_name)?;
                 profile.token = Some(new.clone());
                 config.save()?;
             }
@@ -269,77 +265,47 @@ impl Client {
         Ok(value)
     }
 
-    pub async fn download(
+    pub async fn download_query(
         &mut self,
         path: &str,
+        query: &[(&str, &str)],
         output: &Path,
         config: &mut ClientConfig,
         profile_name: Option<&str>,
+        show_progress: bool,
     ) -> CliResult<()> {
-        let response = self.request(Method::GET, path, &[])?.send().await?;
+        let response = self.request(Method::GET, path, query)?.send().await?;
         let (response, new_token) = self.check_response(response).await?;
         self.handle_token(new_token, config, profile_name)?;
 
-        let total_size = response.content_length();
-
-        let pb = if let Some(size) = total_size {
-            let pb = ProgressBar::new(size);
-            pb.set_style(
-                ProgressStyle::default_bar()
-                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-                    .unwrap()
-                    .progress_chars("#>-"),
-            );
-            pb
+        let pb = if show_progress {
+            response.content_length().map(|size| {
+                let pb = ProgressBar::new(size);
+                pb.set_style(
+                    ProgressStyle::default_bar()
+                        .template("{spinner:.green} [{bar:40.cyan/blue}] {bytes}/{total_bytes}")
+                        .unwrap()
+                        .progress_chars("#>-"),
+                );
+                pb
+            })
         } else {
-            let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.green} [{elapsed_precise}] {bytes} downloaded")
-                    .unwrap(),
-            );
-            pb
+            None
         };
-
         let mut file = tokio::fs::File::create(output).await?;
         let mut stream = response.bytes_stream();
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
-            pb.inc(chunk.len() as u64);
+            if let Some(pb) = &pb {
+                pb.inc(chunk.len() as u64);
+            }
             file.write_all(&chunk).await?;
         }
         file.flush().await?;
-        pb.finish_with_message("Download complete");
+        if let Some(pb) = pb {
+            pb.finish_and_clear();
+        }
         Ok(())
-    }
-
-    /// Raw GET returning Response for captcha download etc.
-    pub async fn get_raw(
-        &self,
-        path: &str,
-        query: &[(&str, &str)],
-    ) -> CliResult<Response> {
-        let response = self.request(Method::GET, path, query)?.send().await?;
-        Ok(response)
-    }
-
-    /// Helper: try to parse the token from a login-like response.
-    /// Ret2Shell wraps login in a standard envelope: { "error": null, "data": { "token": "..." } }
-    /// or sometimes the token is at top level.
-    pub fn extract_token(value: &Value) -> Option<String> {
-        // Check data.token path first
-        if let Some(token) = value
-            .get("data")
-            .and_then(|d| d.get("token"))
-            .and_then(|v| v.as_str())
-        {
-            return Some(token.to_owned());
-        }
-        // Check top-level token
-        if let Some(token) = value.get("token").and_then(|v| v.as_str()) {
-            return Some(token.to_owned());
-        }
-        None
     }
 }

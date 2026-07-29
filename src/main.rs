@@ -1,7 +1,7 @@
 use std::process::exit;
 
 use clap::Parser;
-use ret2cli::{run, Cli};
+use ret2cli::{Cli, run};
 
 #[tokio::main]
 async fn main() {

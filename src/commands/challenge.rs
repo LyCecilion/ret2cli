@@ -1,434 +1,413 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::{
-    cli::{
-        ChallengeListArgs, ChallengeViewArgs, DownloadArgs, HintArgs, HintsArgs,
-        SolveArgs, StartArgs, StopArgs,
-    },
+    cli::{ChallengeArgs, DownloadArgs, GameContextArgs, SubmitArgs, UnlockHintArgs},
     client::Client,
+    commands::require_or_input,
     config::ClientConfig,
     error::{CliError, CliResult},
     output, resolve_challenge_id, resolve_game_id,
 };
 
-// --- API response types ---
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ChallengeInfo {
-    id: i64,
-    name: String,
-    content: Option<String>,
-    score: Option<i64>,
-    tag: Option<Vec<TagEntry>>,
-    score_rule: Option<ScoreRule>,
-    bucket: Option<String>,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ChallengeInfo {
+    pub id: i64,
+    pub name: String,
+    pub content: Option<String>,
+    pub score: i32,
+    pub tag: Vec<TagEntry>,
+    pub score_rule: ScoreRule,
+    pub bucket: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct TagEntry {
-    name: String,
-    #[serde(default)]
-    primary: bool,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TagEntry {
+    pub name: String,
+    pub primary: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct ScoreRule {
-    initial: Option<i64>,
-    minimum: Option<i64>,
-    decay: Option<f64>,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ScoreRule {
+    pub initial: i32,
+    pub minimum: i32,
+    pub decay: i32,
 }
 
-#[derive(Debug, Deserialize)]
-struct SolveEntry {
-    challenge_id: i64,
-    solved: Option<bool>,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SubmissionInfo {
+    pub id: i64,
+    pub created_at: i64,
+    pub challenge_id: i64,
+    pub challenge_name: Option<String>,
+    pub solved: Option<bool>,
+    pub result: Option<String>,
+    pub score: Option<i32>,
 }
 
-// --- Table row ---
-
-#[derive(Tabled)]
-struct ChallengeRow {
-    #[tabled(rename = "ID")]
-    id: i64,
-    #[tabled(rename = "Name")]
-    name: String,
-    #[tabled(rename = "Score")]
-    score: String,
-    #[tabled(rename = "Tags")]
-    tags: String,
-    #[tabled(rename = "Solved")]
-    solved: String,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct HintInfo {
+    pub id: i64,
+    pub content: String,
+    pub cost: i32,
 }
 
-// --- Commands ---
+impl HintInfo {
+    pub fn locked(&self) -> bool {
+        self.cost > 0 && self.content.is_empty()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FileInfo {
+    pub folder: String,
+    pub file: String,
+}
+
+pub async fn fetch_challenges(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    game_id: i64,
+) -> CliResult<Vec<ChallengeInfo>> {
+    let path = format!("game/{game_id}/challenge");
+    let (items, _): (Vec<ChallengeInfo>, u64) =
+        client.get(&path, &[], config, profile_name).await?;
+    Ok(items)
+}
 
 pub async fn challenges(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: ChallengeListArgs,
+    args: GameContextArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
-    let Some(game_id) = game_id else {
-        return Err(CliError::Config("specify --game".to_owned()));
-    };
-
-    // Fetch challenge list
-    let path = format!("game/{game_id}/challenge");
-    let (challenges, _total): (Vec<ChallengeInfo>, i64) =
-        client.get(&path, &[], config, profile_name).await?;
-
-    // Fetch solve list to determine solved status
-    let solved_ids = fetch_solved_ids(client, config, profile_name, game_id).await;
-
+    let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
+    let items = fetch_challenges(client, config, profile_name, game_id).await?;
+    let solved = fetch_solved_ids(client, config, profile_name, game_id).await?;
     if json {
-        output::print_json(&challenges);
-    } else {
-        let rows: Vec<ChallengeRow> = challenges
-            .into_iter()
-            .map(|c| {
-                let is_solved = solved_ids.contains(&c.id);
-                ChallengeRow {
-                    id: c.id,
-                    name: c.name,
-                    score: c
-                        .score
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "—".to_owned()),
-                    tags: format_tags(&c.tag),
-                    solved: if is_solved { "✓".to_owned() } else { "—".to_owned() },
-                }
-            })
-            .collect();
-        output::print_table(&rows);
+        output::print_json(&items);
+        return Ok(());
     }
-
+    #[derive(Tabled)]
+    struct Row {
+        #[tabled(rename = "ID")]
+        id: i64,
+        #[tabled(rename = "Name")]
+        name: String,
+        #[tabled(rename = "Score")]
+        score: i32,
+        #[tabled(rename = "Tags")]
+        tags: String,
+        #[tabled(rename = "Solved")]
+        solved: String,
+    }
+    let rows: Vec<_> = items
+        .into_iter()
+        .map(|c| Row {
+            id: c.id,
+            name: c.name,
+            score: c.score,
+            tags: tags(&c.tag),
+            solved: if solved.contains(&c.id) { "✓" } else { "—" }.to_owned(),
+        })
+        .collect();
+    output::print_table(&rows);
     Ok(())
 }
 
 pub async fn view(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: ChallengeViewArgs,
+    args: ChallengeArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
-    let Some(game_id) = game_id else {
-        return Err(CliError::Config("specify --game".to_owned()));
-    };
-
-    let challenge_id =
-        resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
-
-    let path = format!("game/{game_id}/challenge/{challenge_id}");
-    let challenge: ChallengeInfo = client.get(&path, &[], config, profile_name).await?;
-
-    // Check if solved
-    let solved_ids = fetch_solved_ids(client, config, profile_name, game_id).await;
-    let is_solved = solved_ids.contains(&challenge.id);
-
+    let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
+    let id = resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
+    let path = format!("game/{game_id}/challenge/{id}");
+    let item: ChallengeInfo = client.get(&path, &[], config, profile_name).await?;
     if json {
-        output::print_json(&challenge);
-    } else {
-        let tags = format_tags(&challenge.tag);
-        let score_str = challenge
-            .score
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "—".to_owned());
-        let status = if is_solved { "Solved" } else { "Unsolved" };
-
-        let pairs: Vec<(&str, &str)> = vec![
-            ("Name", challenge.name.as_str()),
-            ("Score", &score_str),
-            ("Tags", &tags),
-            ("Status", status),
-        ];
-        output::print_key_value(&pairs);
-
-        if let Some(ref content) = challenge.content {
-            println!();
-            output::print_markdown(content);
-        }
-
-        // Bucket (attachment info)
-        if let Some(ref bucket) = challenge.bucket {
-            if !bucket.is_empty() {
-                println!();
-                println!("Attachments: available (use 'download' command)");
-            }
-        }
+        output::print_json(&item);
+        return Ok(());
     }
-
+    let score = item.score.to_string();
+    let tag_text = tags(&item.tag);
+    let solved = fetch_solved_ids(client, config, profile_name, game_id)
+        .await?
+        .contains(&id);
+    output::print_key_value(&[
+        ("Name", &item.name),
+        ("Score", &score),
+        ("Tags", &tag_text),
+        ("Status", if solved { "Solved" } else { "Unsolved" }),
+    ]);
+    if let Some(content) = &item.content {
+        println!();
+        output::print_markdown(content);
+    }
+    let files = fetch_files(client, config, profile_name, game_id, id).await?;
+    if !files.is_empty() {
+        println!();
+        output::info(&format!("{} attachment(s) available", files.len()));
+    }
     Ok(())
 }
 
 pub async fn solve(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: SolveArgs,
+    args: SubmitArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
-    let Some(game_id) = game_id else {
-        return Err(CliError::Config("specify --game".to_owned()));
-    };
-
+    let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
     let challenge_id =
         resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
-
-    let flag = if let Some(f) = args.flag {
-        f
-    } else {
-        rpassword::prompt_password("Flag: ")?
-    };
-
+    let flag = require_or_input(args.flag, "Flag", json)?;
     let path = format!("game/{game_id}/challenge/{challenge_id}/submit");
-    let result = client
-        .post_value(
+    let mut submission: SubmissionInfo = client
+        .post(
             &path,
             &serde_json::json!({ "content": flag }),
             config,
             profile_name,
         )
         .await?;
-
-    if json {
-        output::print_json(&result);
-    } else {
-        let correct = result
-            .get("correct")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let score = result.get("score").and_then(|v| v.as_i64());
-        let info = result.get("result").and_then(|v| v.as_str());
-
-        if correct {
-            if let Some(score) = score {
-                output::success(&format!("Correct! (+{score} pts)"));
-            } else {
-                output::success("Already solved");
-            }
-        } else {
-            output::error(&format!(
-                "Incorrect{}",
-                info.map(|s| format!(": {s}")).unwrap_or_default()
-            ));
+    for attempt in 0..10 {
+        if submission.solved.is_some() {
+            break;
         }
+        if attempt > 0 || submission.solved.is_none() {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        let id = submission.id.to_string();
+        submission = client
+            .get(&path, &[("id", &id)], config, profile_name)
+            .await?;
     }
-
-    Ok(())
+    match submission.solved {
+        Some(true) => {
+            if json {
+                output::print_json(&submission);
+            } else {
+                output::success(&format!(
+                    "Correct: {}",
+                    submission.result.as_deref().unwrap_or("accepted")
+                ));
+            }
+            Ok(())
+        }
+        Some(false) => Err(CliError::Config(format!(
+            "incorrect flag: {}",
+            submission.result.as_deref().unwrap_or("rejected")
+        ))),
+        None => Err(CliError::Config(format!(
+            "submission {} is still pending",
+            submission.id
+        ))),
+    }
 }
 
-// --- Hints ---
-
-#[derive(Deserialize, Serialize)]
-struct HintInfo {
-    id: i64,
-    content: Option<String>,
-    cost: Option<i64>,
-    unlocked: Option<bool>,
+pub async fn fetch_hints(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    game_id: i64,
+    challenge_id: i64,
+) -> CliResult<Vec<HintInfo>> {
+    let path = format!("game/{game_id}/challenge/{challenge_id}/hint");
+    client.get(&path, &[], config, profile_name).await
 }
 
 pub async fn hints(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: HintsArgs,
+    args: ChallengeArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
-    let Some(game_id) = game_id else {
-        return Err(CliError::Config("specify --game".to_owned()));
-    };
-
-    let challenge_id =
-        resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
-
-    let path = format!("game/{game_id}/challenge/{challenge_id}/hint");
-
-    let (hints, _total): (Vec<HintInfo>, i64) =
-        client.get(&path, &[], config, profile_name).await?;
-
+    let (game_id, challenge_id) = resolve_context(
+        client,
+        config,
+        profile_name,
+        args.game.as_deref(),
+        &args.challenge,
+    )
+    .await?;
+    let items = fetch_hints(client, config, profile_name, game_id, challenge_id).await?;
     if json {
-        output::print_json(&hints);
-    } else if hints.is_empty() {
-        output::info("No hints available.");
-    } else {
-        #[derive(Tabled)]
-        struct HintRow {
-            #[tabled(rename = "ID")]
-            id: i64,
-            #[tabled(rename = "Content")]
-            content: String,
-            #[tabled(rename = "Cost")]
-            cost: String,
-            #[tabled(rename = "Status")]
-            status: String,
-        }
-
-        let rows: Vec<HintRow> = hints
-            .into_iter()
-            .map(|h| HintRow {
-                id: h.id,
-                content: h.content.unwrap_or_default(),
-                cost: h
-                    .cost
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "—".to_owned()),
-                status: if h.unlocked.unwrap_or(false) {
-                    "Unlocked".to_owned()
-                } else {
-                    "Locked".to_owned()
-                },
-            })
-            .collect();
-        output::print_table(&rows);
+        output::print_json(&items);
+        return Ok(());
     }
-
+    #[derive(Tabled)]
+    struct Row {
+        #[tabled(rename = "ID")]
+        id: i64,
+        #[tabled(rename = "Cost")]
+        cost: i32,
+        #[tabled(rename = "Status")]
+        status: String,
+        #[tabled(rename = "Content")]
+        content: String,
+    }
+    let rows: Vec<_> = items
+        .into_iter()
+        .map(|h| Row {
+            id: h.id,
+            cost: h.cost,
+            status: if h.locked() { "Locked" } else { "Available" }.to_owned(),
+            content: if h.locked() {
+                "—".to_owned()
+            } else {
+                h.content
+            },
+        })
+        .collect();
+    output::print_table(&rows);
     Ok(())
 }
 
-pub async fn hint(
+pub async fn unlock_hint(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: HintArgs,
+    args: UnlockHintArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
-    let Some(game_id) = game_id else {
-        return Err(CliError::Config("specify --game".to_owned()));
-    };
-
-    let challenge_id =
-        resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
-
-    let path = format!("game/{game_id}/challenge/{challenge_id}/hint/unlock");
-    let body = if let Some(hint_id) = args.id {
-        serde_json::json!({ "id": hint_id })
+    let (game_id, challenge_id) = resolve_context(
+        client,
+        config,
+        profile_name,
+        args.game.as_deref(),
+        &args.challenge,
+    )
+    .await?;
+    let id = if let Some(id) = args.id {
+        id
     } else {
-        let list_path = format!("game/{game_id}/challenge/{challenge_id}/hint");
-        let (hints, _total): (Vec<HintInfo>, i64) =
-            client.get(&list_path, &[], config, profile_name).await?;
-
-        let locked: Vec<_> = hints
-            .iter()
-            .filter(|h| !h.unlocked.unwrap_or(false))
+        let locked: Vec<_> = fetch_hints(client, config, profile_name, game_id, challenge_id)
+            .await?
+            .into_iter()
+            .filter(HintInfo::locked)
             .collect();
-
-        if locked.is_empty() {
-            output::info("All hints are already unlocked.");
-            return Ok(());
+        if locked.len() == 1 && !json {
+            locked[0].id
+        } else {
+            return Err(CliError::Config(
+                "specify --id for the hint to unlock".to_owned(),
+            ));
         }
-
-        println!("Available locked hints:");
-        for h in &locked {
-            println!(
-                "  ID: {} | Cost: {} | {}",
-                h.id,
-                h.cost
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "?".to_owned()),
-                h.content.as_deref().unwrap_or("(no preview)"),
-            );
-        }
-
-        let hint_id_str = rpassword::prompt_password("Hint ID to unlock: ")?;
-        let hint_id: i64 = hint_id_str
-            .parse()
-            .map_err(|_| CliError::Config("invalid hint ID".to_owned()))?;
-
-        serde_json::json!({ "id": hint_id })
     };
-
-    let result = client
-        .post_value(&path, &body, config, profile_name)
+    let path = format!("game/{game_id}/challenge/{challenge_id}/hint/unlock");
+    let _: serde_json::Value = client
+        .post(&path, &serde_json::json!({"id": id}), config, profile_name)
         .await?;
-
+    let unlocked = fetch_hints(client, config, profile_name, game_id, challenge_id)
+        .await?
+        .into_iter()
+        .find(|h| h.id == id)
+        .ok_or_else(|| CliError::Config("unlocked hint was not returned".to_owned()))?;
     if json {
-        output::print_json(&result);
+        output::print_json(&unlocked);
     } else {
-        let content = result
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Hint unlocked");
-        output::success(content);
+        output::success(&format!("Hint unlocked: {}", unlocked.content));
     }
-
     Ok(())
 }
 
 pub async fn start(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: StartArgs,
+    args: ChallengeArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
-    let Some(game_id) = game_id else {
-        return Err(CliError::Config("specify --game".to_owned()));
-    };
-
-    let challenge_id =
-        resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
-
-    let path = format!("game/{game_id}/challenge/{challenge_id}/instance");
-    let result = client
-        .post_value(&path, &serde_json::json!({}), config, profile_name)
-        .await?;
-
-    if json {
-        output::print_json(&result);
-    } else {
-        output::success("Instance started");
-
-        if let Some(env) = result.get("env") {
-            if let Some(obj) = env.as_object() {
-                let pairs: Vec<(&str, &str)> = obj
-                    .iter()
-                    .map(|(k, v)| (k.as_str(), v.as_str().unwrap_or("")))
-                    .collect();
-                output::print_key_value(&pairs);
-            }
-        }
-    }
-
-    Ok(())
+    instance_action(client, config, args, json, profile_name, true).await
 }
-
 pub async fn stop(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: StopArgs,
+    args: ChallengeArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
-    let Some(game_id) = game_id else {
-        return Err(CliError::Config("specify --game".to_owned()));
-    };
-
-    let challenge_id =
-        resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
-
+    instance_action(client, config, args, json, profile_name, false).await
+}
+async fn instance_action(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    args: ChallengeArgs,
+    json: bool,
+    profile_name: Option<&str>,
+    start: bool,
+) -> CliResult<()> {
+    let (game_id, challenge_id) = resolve_context(
+        client,
+        config,
+        profile_name,
+        args.game.as_deref(),
+        &args.challenge,
+    )
+    .await?;
     let path = format!("game/{game_id}/challenge/{challenge_id}/instance");
-    let result = client
-        .delete_value(&path, config, profile_name)
-        .await?;
-
-    if json {
-        output::print_json(&result);
+    if start {
+        let _: serde_json::Value = client
+            .post_value(&path, &serde_json::json!({}), config, profile_name)
+            .await?;
     } else {
-        output::success("Instance stopped");
+        client.delete(&path, config, profile_name).await?;
     }
+    let state = if start { "started" } else { "stopped" };
+    if json {
+        output::print_json(&serde_json::json!({ "instance": state, "challenge_id": challenge_id }));
+    } else {
+        output::success(&format!("Instance {state}"));
+    }
+    Ok(())
+}
 
+pub async fn fetch_files(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    game_id: i64,
+    challenge_id: i64,
+) -> CliResult<Vec<FileInfo>> {
+    let path = format!("game/{game_id}/challenge/{challenge_id}/file");
+    client.get(&path, &[], config, profile_name).await
+}
+
+pub async fn files(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    args: ChallengeArgs,
+    json: bool,
+    profile_name: Option<&str>,
+) -> CliResult<()> {
+    let (game_id, challenge_id) = resolve_context(
+        client,
+        config,
+        profile_name,
+        args.game.as_deref(),
+        &args.challenge,
+    )
+    .await?;
+    let items = fetch_files(client, config, profile_name, game_id, challenge_id).await?;
+    if json {
+        output::print_json(&items);
+    } else {
+        for file in items {
+            println!("{:<8} {}", file.folder, file.file);
+        }
+    }
     Ok(())
 }
 
@@ -439,91 +418,161 @@ pub async fn download(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
-    let Some(game_id) = game_id else {
-        return Err(CliError::Config("specify --game".to_owned()));
-    };
-
-    let challenge_id =
-        resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
-
-    let output_path = match args.output {
-        Some(ref p) => PathBuf::from(p),
-        None => {
-            let chal_path = format!("game/{game_id}/challenge/{challenge_id}");
-            let challenge: ChallengeInfo =
-                client.get(&chal_path, &[], config, profile_name).await?;
-            PathBuf::from(format!("{}.zip", challenge.name))
+    let (game_id, challenge_id) = resolve_context(
+        client,
+        config,
+        profile_name,
+        args.game.as_deref(),
+        &args.challenge,
+    )
+    .await?;
+    let all = fetch_files(client, config, profile_name, game_id, challenge_id).await?;
+    let selected: Vec<_> = if let Some(name) = &args.file {
+        let matches: Vec<_> = all.into_iter().filter(|f| &f.file == name).collect();
+        if matches.len() != 1 {
+            return Err(CliError::Config(format!(
+                "attachment '{name}' is missing or ambiguous"
+            )));
         }
+        matches
+    } else {
+        all
     };
-
+    if selected.is_empty() {
+        return Err(CliError::Config(
+            "challenge has no downloadable attachments".to_owned(),
+        ));
+    }
+    let single_output = args.file.is_some() && args.output.is_some();
+    let base = args
+        .output
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(safe_name(&args.challenge)));
+    if !single_output {
+        std::fs::create_dir_all(&base)?;
+    }
     let path = format!("game/{game_id}/challenge/{challenge_id}/file");
-
+    let mut downloaded = Vec::new();
+    for item in selected {
+        let filename = Path::new(&item.file)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| CliError::Config("invalid attachment filename".to_owned()))?;
+        let target = if single_output {
+            base.clone()
+        } else {
+            base.join(filename)
+        };
+        client
+            .download_query(
+                &path,
+                &[("folder", &item.folder), ("file", &item.file)],
+                &target,
+                config,
+                profile_name,
+                !json,
+            )
+            .await?;
+        downloaded.push(target.display().to_string());
+    }
     if json {
-        output::info(&format!(
-            "Downloading attachments to {}",
-            output_path.display()
-        ));
+        output::print_json(&serde_json::json!({ "downloaded": downloaded }));
+    } else {
+        output::success(&format!("Downloaded {} attachment(s)", downloaded.len()));
     }
-
-    client
-        .download(&path, &output_path, config, profile_name)
-        .await?;
-
-    if !json {
-        output::success(&format!(
-            "Downloaded attachments to {}",
-            output_path.display()
-        ));
-    }
-
     Ok(())
 }
 
-// --- Helpers ---
-
-fn format_tags(tags: &Option<Vec<TagEntry>>) -> String {
-    match tags {
-        Some(arr) if !arr.is_empty() => arr
-            .iter()
-            .filter(|t| t.primary)
-            .map(|t| t.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", "),
-        _ => "—".to_owned(),
-    }
+async fn required_game(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    game: Option<&str>,
+) -> CliResult<i64> {
+    resolve_game_id(client, config, profile_name, game)
+        .await?
+        .ok_or_else(|| {
+            CliError::Config(
+                "no game selected; run 'ret2cli game use <game>' or pass --game".to_owned(),
+            )
+        })
 }
-
-/// Fetch the set of solved challenge IDs for a game.
-/// The solve endpoint returns a flat array (no [data, total] wrapper).
+async fn resolve_context(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    game: Option<&str>,
+    challenge: &str,
+) -> CliResult<(i64, i64)> {
+    let game_id = required_game(client, config, profile_name, game).await?;
+    let challenge_id =
+        resolve_challenge_id(client, config, profile_name, game_id, challenge).await?;
+    Ok((game_id, challenge_id))
+}
 async fn fetch_solved_ids(
     client: &mut Client,
     config: &mut ClientConfig,
     profile_name: Option<&str>,
     game_id: i64,
-) -> HashSet<i64> {
+) -> CliResult<HashSet<i64>> {
     let path = format!("game/{game_id}/solve");
-    // Try as flat Vec first, then as tuple
-    if let Ok(solves) = client
-        .get::<Vec<SolveEntry>>(&path, &[("page_size", "500")], config, profile_name)
-        .await
-    {
-        return solves
-            .into_iter()
-            .filter(|s| s.solved.unwrap_or(false))
-            .map(|s| s.challenge_id)
-            .collect();
+    let solves: Vec<SubmissionInfo> = client.get(&path, &[], config, profile_name).await?;
+    Ok(solves
+        .into_iter()
+        .filter(|s| s.solved == Some(true))
+        .map(|s| s.challenge_id)
+        .collect())
+}
+fn tags(tags: &[TagEntry]) -> String {
+    let value = tags
+        .iter()
+        .filter(|t| t.primary)
+        .map(|t| t.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if value.is_empty() {
+        "—".to_owned()
+    } else {
+        value
     }
-    // Fallback: might be [data, total] tuple
-    if let Ok((solves, _total)) = client
-        .get::<(Vec<SolveEntry>, i64)>(&path, &[("page_size", "500")], config, profile_name)
-        .await
-    {
-        return solves
-            .into_iter()
-            .filter(|s| s.solved.unwrap_or(false))
-            .map(|s| s.challenge_id)
-            .collect();
+}
+fn safe_name(value: &str) -> String {
+    let value: String = value
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if value.is_empty() {
+        "attachments".to_owned()
+    } else {
+        value
     }
-    HashSet::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn parses_real_hint_shape() {
+        let h: Vec<HintInfo> = serde_json::from_str(
+            r#"[{"id":1,"created_at":0,"challenge_id":2,"content":"","cost":10}]"#,
+        )
+        .unwrap();
+        assert!(h[0].locked());
+    }
+    #[test]
+    fn parses_real_submission_shape() {
+        let s: SubmissionInfo = serde_json::from_str(r#"{"id":1,"created_at":2,"user_id":3,"challenge_id":4,"team_id":null,"content":null,"solved":true,"result":"ok"}"#).unwrap();
+        assert_eq!(s.solved, Some(true));
+    }
+    #[test]
+    fn sanitizes_download_directory() {
+        assert_eq!(safe_name("../a b"), ".._a_b");
+    }
 }

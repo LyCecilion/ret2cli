@@ -14,10 +14,7 @@ pub enum CliError {
     #[error("file io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("server returned {status}: {message}")]
-    Api {
-        status: StatusCode,
-        message: String,
-    },
+    Api { status: StatusCode, message: String },
 }
 
 impl CliError {

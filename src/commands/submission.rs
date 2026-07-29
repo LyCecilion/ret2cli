@@ -1,100 +1,65 @@
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 use tabled::Tabled;
 
 use crate::{
-    cli::SubmissionsArgs,
+    cli::GameContextArgs,
     client::Client,
+    commands::challenge::SubmissionInfo,
     config::ClientConfig,
-    error::CliResult,
-    output,
+    error::{CliError, CliResult},
+    output, resolve_game_id,
 };
-
-#[derive(Debug, Deserialize, Serialize)]
-struct SubmissionInfo {
-    id: Option<i64>,
-    challenge: Option<serde_json::Value>,
-    result: Option<String>,
-    score: Option<i64>,
-    created_at: Option<String>,
-}
-
-#[derive(Tabled)]
-struct SubmissionRow {
-    #[tabled(rename = "Time")]
-    time: String,
-    #[tabled(rename = "Challenge")]
-    challenge: String,
-    #[tabled(rename = "Result")]
-    result: String,
-    #[tabled(rename = "Score")]
-    score: String,
-}
 
 pub async fn submissions(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: SubmissionsArgs,
+    args: GameContextArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = args.game;
-
-    let subs: Vec<SubmissionInfo> = if let Some(game_id) = game_id {
-        let path = format!("game/{game_id}/solve");
-
-        let (subs, _total): (Vec<SubmissionInfo>, i64) =
-            client.get(&path, &[], config, profile_name).await?;
-        subs
-    } else {
-        // Try recent games
-        #[derive(Deserialize)]
-        struct GameItem {
-            id: i64,
-        }
-
-        let (games, _total): (Vec<GameItem>, i64) =
-            client.get("game", &[("page_size", "10")], config, profile_name).await?;
-
-
-        let mut all_subs = Vec::new();
-        for g in games {
-            let path = format!("game/{}/solve", g.id);
-
-            if let Ok((data, _total)) = client
-                .get::<(Vec<SubmissionInfo>, i64)>(&path, &[], config, profile_name)
-                .await
-            {
-                all_subs.extend(data);
-            }
-        }
-        all_subs
-    };
-
+    let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref())
+        .await?
+        .ok_or_else(|| CliError::Config("no game selected".to_owned()))?;
+    let path = format!("game/{game_id}/solve");
+    let items: Vec<SubmissionInfo> = client.get(&path, &[], config, profile_name).await?;
     if json {
-        output::print_json(&subs);
-    } else {
-        let rows: Vec<SubmissionRow> = subs
-            .into_iter()
-            .map(|s| {
-                let challenge_name = s
-                    .challenge
-                    .as_ref()
-                    .and_then(|c| c.get("name"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("—");
-                SubmissionRow {
-                    time: s.created_at.unwrap_or_else(|| "—".to_owned()),
-                    challenge: challenge_name.to_owned(),
-                    result: s.result.unwrap_or_else(|| "—".to_owned()),
-                    score: s
-                        .score
-                        .map(|sc| sc.to_string())
-                        .unwrap_or_else(|| "—".to_owned()),
-                }
-            })
-            .collect();
-        output::print_table(&rows);
+        output::print_json(&items);
+        return Ok(());
     }
-
+    #[derive(Tabled)]
+    struct Row {
+        #[tabled(rename = "Time")]
+        time: String,
+        #[tabled(rename = "Challenge")]
+        challenge: String,
+        #[tabled(rename = "Result")]
+        result: String,
+        #[tabled(rename = "Score")]
+        score: String,
+    }
+    let rows: Vec<_> = items
+        .into_iter()
+        .map(|s| Row {
+            time: DateTime::<Utc>::from_timestamp(s.created_at, 0)
+                .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| s.created_at.to_string()),
+            challenge: s
+                .challenge_name
+                .unwrap_or_else(|| s.challenge_id.to_string()),
+            result: s.result.unwrap_or_else(|| {
+                if s.solved == Some(true) {
+                    "Solved"
+                } else {
+                    "—"
+                }
+                .to_owned()
+            }),
+            score: s
+                .score
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "—".to_owned()),
+        })
+        .collect();
+    output::print_table(&rows);
     Ok(())
 }

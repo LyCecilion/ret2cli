@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::{
-    cli::{GameListArgs, GameViewArgs, ScoreboardArgs},
+    cli::{GameContextArgs, GameListArgs},
     client::Client,
     config::ClientConfig,
     error::CliResult,
@@ -51,15 +51,15 @@ impl GameInfo {
 
     fn host_type_str(&self) -> &str {
         match self.host_type.unwrap_or(0) {
-            0 => "Individual",
-            1 => "Team",
+            0 => "Training",
+            1 => "Game",
             _ => "Unknown",
         }
     }
 }
 
 #[derive(Tabled)]
-struct GameRow {
+pub struct GameRow {
     #[tabled(rename = "ID")]
     id: i64,
     #[tabled(rename = "Name")]
@@ -83,10 +83,10 @@ pub async fn games(
 ) -> CliResult<()> {
     let page_str = args.page.to_string();
     let page_size_str = args.page_size.to_string();
-    let query: Vec<(&str, &str)> = vec![
-        ("page", &page_str),
-        ("page_size", &page_size_str),
-    ];
+    let mut query: Vec<(&str, &str)> = vec![("page", &page_str), ("page_size", &page_size_str)];
+    if let Some(kind) = args.r#type {
+        query.push(("host_type", kind.api_value()));
+    }
 
     // Response: [data_array, total_count]
     let (games, _total): (Vec<GameInfo>, i64) =
@@ -121,16 +121,14 @@ pub async fn games(
 pub async fn game(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: GameViewArgs,
+    game_arg: Option<String>,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = if let Some(ref g) = args.game {
+    let game_id = if let Some(ref g) = game_arg {
         resolve_game_id(client, config, profile_name, Some(g)).await?
     } else {
-        return Err(crate::CliError::Config(
-            "specify a game name or ID".to_owned(),
-        ));
+        resolve_game_id(client, config, profile_name, None).await?
     };
 
     let Some(game_id) = game_id else {
@@ -169,16 +167,15 @@ pub async fn game(
 
 #[derive(Deserialize, Serialize)]
 struct TeamEntry {
+    id: i64,
     name: Option<String>,
     score: Option<i64>,
-    rank: Option<i64>,
-    solve_count: Option<i64>,
 }
 
 pub async fn scoreboard(
     client: &mut Client,
     config: &mut ClientConfig,
-    args: ScoreboardArgs,
+    args: GameContextArgs,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
@@ -188,7 +185,7 @@ pub async fn scoreboard(
     };
 
     let path = format!("game/{game_id}/team");
-    let query = &[("order_by", "score"), ("asc", "false")];
+    let query = &[("order", "score"), ("asc", "false")];
 
     // Response: [data_array, total_count]
     let (teams, _total): (Vec<TeamEntry>, i64) =
@@ -202,8 +199,8 @@ pub async fn scoreboard(
         name: String,
         #[tabled(rename = "Score")]
         score: String,
-        #[tabled(rename = "Solves")]
-        solves: String,
+        #[tabled(rename = "ID")]
+        id: i64,
     }
 
     if json {
@@ -213,23 +210,54 @@ pub async fn scoreboard(
             .into_iter()
             .enumerate()
             .map(|(i, t)| ScoreRow {
-                rank: t
-                    .rank
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| (i + 1).to_string()),
+                rank: (i + 1).to_string(),
+                id: t.id,
                 name: t.name.unwrap_or_default(),
                 score: t
                     .score
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "0".to_owned()),
-                solves: t
-                    .solve_count
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "—".to_owned()),
             })
             .collect();
         output::print_table(&rows);
     }
 
     Ok(())
+}
+
+pub async fn use_game(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    game: String,
+    profile_name: Option<&str>,
+    json: bool,
+) -> CliResult<()> {
+    let id = resolve_game_id(client, config, profile_name, Some(&game))
+        .await?
+        .ok_or_else(|| crate::CliError::Config("game not found".to_owned()))?;
+    config.active_profile_mut(profile_name)?.game = Some(id.to_string());
+    config.save()?;
+    if json {
+        output::print_json(&serde_json::json!({ "game": id }));
+    } else {
+        output::success(&format!("Selected game '{game}' ({id})"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn parses_ret2shell_game_timestamps_and_host_type() {
+        let game: GameInfo = serde_json::from_str(
+            r#"{
+          "id":1,"name":"Training","brief":"demo","start_at":1,"end_at":2,
+          "host_type":0,"team_size":0,"hidden":false,"offline":false,"frozen":false
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(game.host_type_str(), "Training");
+        assert_eq!(game.start_at, 1);
+    }
 }

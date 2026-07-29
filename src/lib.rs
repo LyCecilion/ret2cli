@@ -5,12 +5,16 @@ pub mod config;
 mod error;
 mod output;
 
-use std::env;
+use std::{env, io::IsTerminal};
 
 pub use cli::{Cli, Commands};
 pub use error::{CliError, CliResult};
 
 use crate::{
+    cli::{
+        AccountCommand, ChallengeCommand, GameCommand, ProfileCommand, SubmissionCommand,
+        TeamCommand,
+    },
     client::Client,
     config::ClientConfig,
 };
@@ -18,127 +22,196 @@ use crate::{
 pub async fn run(cli: Cli) -> CliResult<()> {
     let mut config = ClientConfig::load()?;
     let json = cli.json;
-    let profile_name = cli.profile.as_deref();
-
-    // Commands that don't need a network client
-    match &cli.command {
-        Commands::Completion(args) => {
-            commands::completion(args.clone());
-            return Ok(());
-        }
-        Commands::Use(args) => {
-            return commands::use_profile(&mut config, args.clone());
-        }
-        Commands::UseGame(args) => {
-            return commands::use_game(args.clone(), &mut config, json);
-        }
-        _ => {}
-    }
-    // Resolve base URL: --url > env > profile > config default
-    let base_url = cli
-        .url
-        .or_else(|| env::var("R2S_URL").ok())
-        .or_else(|| {
-            let profile = config.active_profile_resolved(profile_name);
-            if profile.url.is_empty() {
-                None
-            } else {
-                Some(profile.url.clone())
-            }
-        })
-        .unwrap_or_default();
-
-    // Status can work offline
-    if matches!(&cli.command, Commands::Status) && base_url.is_empty() {
-        return commands::auth::status_local(&config, json, profile_name);
-    }
-
-    // Resolve token: --token > env > profile
-    let token = cli
-        .token
-        .or_else(|| env::var("R2S_TOKEN").ok())
-        .or_else(|| {
-            let profile = config.active_profile_resolved(profile_name);
-            profile.token.clone()
-        });
-
-    let mut client = Client::new(base_url, token)?;
+    let profile_override = cli.profile.clone();
+    let profile_name = profile_override.as_deref();
 
     match cli.command {
-        Commands::Login(args) => commands::auth::login(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Logout => commands::auth::logout(&mut client, &mut config, profile_name).await,
-        Commands::Register(args) => commands::auth::register(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Games(args) => commands::game::games(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Game(args) => commands::game::game(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Scoreboard(args) => commands::game::scoreboard(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Challenges(args) => commands::challenge::challenges(&mut client, &mut config, args, json, profile_name).await,
-        Commands::View(args) => commands::challenge::view(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Solve(args) => commands::challenge::solve(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Hints(args) => commands::challenge::hints(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Hint(args) => commands::challenge::hint(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Start(args) => commands::challenge::start(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Stop(args) => commands::challenge::stop(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Download(args) => commands::challenge::download(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Teams(args) => commands::team::teams(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Team(args) => commands::team::team(&mut client, &mut config, args, json, profile_name).await,
-        Commands::My(args) => commands::team::my(&mut client, &mut config, args, json, profile_name).await,
-        Commands::TeamCreate(args) => commands::team::team_create(&mut client, &mut config, args, json, profile_name).await,
-        Commands::TeamJoin(args) => commands::team::team_join(&mut client, &mut config, args, json, profile_name).await,
-        Commands::TeamLeave(args) => commands::team::team_leave(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Profile => commands::profile::profile(&mut client, &mut config, json, profile_name).await,
-        Commands::Submissions(args) => commands::submission::submissions(&mut client, &mut config, args, json, profile_name).await,
-        Commands::Status => commands::auth::status(&mut client, &config, json, profile_name).await,
-        // Already handled above
-        Commands::Completion(_) | Commands::Use(_) | Commands::UseGame(_) => unreachable!(),
+        None => {
+            if !std::io::stdin().is_terminal() || json {
+                return Err(CliError::Config(
+                    "no command specified; use --help".to_owned(),
+                ));
+            }
+            return commands::interactive::run(&mut config, profile_name).await;
+        }
+        Some(Commands::Interactive) => {
+            return commands::interactive::run(&mut config, profile_name).await;
+        }
+        Some(Commands::Completion(args)) => {
+            commands::completion(args);
+            Ok(())
+        }
+        Some(Commands::Profile { command }) => match command {
+            ProfileCommand::List => {
+                commands::profile_list(&config, json);
+                Ok(())
+            }
+            ProfileCommand::Show { name } => commands::profile_show(&config, name.as_deref(), json),
+            ProfileCommand::Add(args) => commands::profile_add(&mut config, args, json),
+            ProfileCommand::Use { name } => commands::profile_use(&mut config, &name, json),
+            ProfileCommand::Remove(args) => commands::profile_remove(&mut config, args, json),
+        },
+        command => {
+            dispatch_network(
+                command.expect("matched Some"),
+                cli.url,
+                cli.token,
+                &mut config,
+                profile_name,
+                json,
+            )
+            .await
+        }
     }
 }
-/// Helper to resolve game ID from name or ID.
-/// Accepts a name string or numeric ID. If name, queries the game list to resolve.
+
+async fn dispatch_network(
+    command: Commands,
+    url_override: Option<String>,
+    token_override: Option<String>,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    json: bool,
+) -> CliResult<()> {
+    let profile = config.active_profile_resolved(profile_name)?;
+    let base_url = url_override
+        .or_else(|| env::var("R2S_URL").ok())
+        .unwrap_or_else(|| profile.url.clone());
+    let token = token_override
+        .or_else(|| env::var("R2S_TOKEN").ok())
+        .or_else(|| profile.token.clone());
+    let mut client = Client::new(base_url, token)?;
+    match command {
+        Commands::Account { command } => match command {
+            AccountCommand::Login(args) => {
+                commands::auth::login(&mut client, config, args, json, profile_name).await
+            }
+            AccountCommand::Logout => {
+                commands::auth::logout(&mut client, config, json, profile_name).await
+            }
+            AccountCommand::Register(args) => {
+                commands::auth::register(&mut client, config, args, json, profile_name).await
+            }
+            AccountCommand::Status => {
+                commands::auth::status(&mut client, config, json, profile_name).await
+            }
+            AccountCommand::Show => {
+                commands::auth::show(&mut client, config, json, profile_name).await
+            }
+        },
+        Commands::Game { command } => match command {
+            GameCommand::List(args) => {
+                commands::game::games(&mut client, config, args, json, profile_name).await
+            }
+            GameCommand::Show { game } => {
+                commands::game::game(&mut client, config, game, json, profile_name).await
+            }
+            GameCommand::Use { game } => {
+                commands::game::use_game(&mut client, config, game, profile_name, json).await
+            }
+            GameCommand::Scoreboard(args) => {
+                commands::game::scoreboard(&mut client, config, args, json, profile_name).await
+            }
+        },
+        Commands::Challenge { command } => match command {
+            ChallengeCommand::List(args) => {
+                commands::challenge::challenges(&mut client, config, args, json, profile_name).await
+            }
+            ChallengeCommand::Show(args) => {
+                commands::challenge::view(&mut client, config, args, json, profile_name).await
+            }
+            ChallengeCommand::Submit(args) => {
+                commands::challenge::solve(&mut client, config, args, json, profile_name).await
+            }
+            ChallengeCommand::Hints(args) => {
+                commands::challenge::hints(&mut client, config, args, json, profile_name).await
+            }
+            ChallengeCommand::UnlockHint(args) => {
+                commands::challenge::unlock_hint(&mut client, config, args, json, profile_name)
+                    .await
+            }
+            ChallengeCommand::Start(args) => {
+                commands::challenge::start(&mut client, config, args, json, profile_name).await
+            }
+            ChallengeCommand::Stop(args) => {
+                commands::challenge::stop(&mut client, config, args, json, profile_name).await
+            }
+            ChallengeCommand::Files(args) => {
+                commands::challenge::files(&mut client, config, args, json, profile_name).await
+            }
+            ChallengeCommand::Download(args) => {
+                commands::challenge::download(&mut client, config, args, json, profile_name).await
+            }
+        },
+        Commands::Team { command } => match command {
+            TeamCommand::List(args) => {
+                commands::team::teams(&mut client, config, args, json, profile_name).await
+            }
+            TeamCommand::Show(args) => {
+                commands::team::team(&mut client, config, args, json, profile_name).await
+            }
+            TeamCommand::Mine(args) => {
+                commands::team::my(&mut client, config, args, json, profile_name).await
+            }
+            TeamCommand::Create(args) => {
+                commands::team::team_create(&mut client, config, args, json, profile_name).await
+            }
+            TeamCommand::Join(args) => {
+                commands::team::team_join(&mut client, config, args, json, profile_name).await
+            }
+            TeamCommand::Leave(args) => {
+                commands::team::team_leave(&mut client, config, args, json, profile_name).await
+            }
+        },
+        Commands::Submission {
+            command: SubmissionCommand::List(args),
+        } => commands::submission::submissions(&mut client, config, args, json, profile_name).await,
+        Commands::Profile { .. } | Commands::Interactive | Commands::Completion(_) => {
+            unreachable!()
+        }
+    }
+}
+
 async fn resolve_game_id(
     client: &mut Client,
     config: &mut ClientConfig,
     profile_name: Option<&str>,
     game: Option<&str>,
 ) -> CliResult<Option<i64>> {
-    let game = match game {
-        Some(g) => g.to_owned(),
-        None => match &config.default_game {
-            Some(d) => d.clone(),
+    let value = match game {
+        Some(value) => value.to_owned(),
+        None => match config.active_profile_resolved(profile_name)?.game.clone() {
+            Some(value) => value,
             None => return Ok(None),
         },
     };
-    let game_ref = game.as_str();
-    // Try parsing as numeric ID first
-    if let Ok(id) = game_ref.parse::<i64>() {
+    if let Ok(id) = value.parse() {
         return Ok(Some(id));
     }
-    // Response: [data_array, total_count]
     #[derive(serde::Deserialize)]
-    struct GameItem {
+    struct Item {
         id: i64,
         name: String,
     }
-
-    let (games, _total): (Vec<GameItem>, i64) = client
+    let (items, _): (Vec<Item>, u64) = client
         .get("game", &[("page_size", "100")], config, profile_name)
         .await?;
-    for g in &games {
-        if g.name.eq_ignore_ascii_case(game_ref) {
-            return Ok(Some(g.id));
-        }
+    let lowered = value.to_lowercase();
+    let matches: Vec<_> = items
+        .into_iter()
+        .filter(|g| {
+            g.name.eq_ignore_ascii_case(&value) || g.name.to_lowercase().starts_with(&lowered)
+        })
+        .collect();
+    if matches.len() == 1 {
+        Ok(Some(matches[0].id))
+    } else {
+        Err(CliError::Config(format!(
+            "game '{value}' is missing or ambiguous"
+        )))
     }
-    // Try prefix match
-    let prefix_matches: Vec<_> = games.iter().filter(|g| g.name.to_lowercase().starts_with(&game_ref.to_lowercase())).collect();
-    if prefix_matches.len() == 1 {
-        return Ok(Some(prefix_matches[0].id));
-    }
-    Err(CliError::Config(format!(
-        "game '{}' not found. Use numeric ID or exact name.",
-        game_ref
-    )))
 }
 
-/// Helper to resolve challenge ID from name or ID.
 async fn resolve_challenge_id(
     client: &mut Client,
     config: &mut ClientConfig,
@@ -146,48 +219,52 @@ async fn resolve_challenge_id(
     game_id: i64,
     challenge: &str,
 ) -> CliResult<i64> {
-    // Try parsing as numeric ID
-    if let Ok(id) = challenge.parse::<i64>() {
+    if let Ok(id) = challenge.parse() {
         return Ok(id);
     }
-
     #[derive(serde::Deserialize)]
-    struct ChallengeItem {
+    struct Item {
         id: i64,
         name: String,
     }
-
     let path = format!("game/{game_id}/challenge");
-    let (challenges, _total): (Vec<ChallengeItem>, i64) = client
-        .get(&path, &[("page_size", "500")], config, profile_name)
-        .await?;
-
-    // Exact match
-    for c in &challenges {
-        if c.name.eq_ignore_ascii_case(challenge) {
-            return Ok(c.id);
-        }
-    }
-    // Prefix match
-    let prefix_matches: Vec<_> = challenges
-        .iter()
-        .filter(|c| c.name.to_lowercase().starts_with(&challenge.to_lowercase()))
+    let (items, _): (Vec<Item>, u64) = client.get(&path, &[], config, profile_name).await?;
+    let lowered = challenge.to_lowercase();
+    let matches: Vec<_> = items
+        .into_iter()
+        .filter(|c| {
+            c.name.eq_ignore_ascii_case(challenge) || c.name.to_lowercase().starts_with(&lowered)
+        })
         .collect();
-    if prefix_matches.len() == 1 {
-        return Ok(prefix_matches[0].id);
+    if matches.len() == 1 {
+        Ok(matches[0].id)
+    } else {
+        Err(CliError::Config(format!(
+            "challenge '{challenge}' is missing or ambiguous"
+        )))
     }
-    // Fuzzy match
-    if prefix_matches.len() > 1 {
-        return Err(CliError::Config(format!(
-            "multiple challenges match '{challenge}': {}",
-            prefix_matches
-                .iter()
-                .map(|c| c.name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )));
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Cli,
+        cli::{ChallengeCommand, Commands},
+    };
+    use clap::Parser;
+    #[test]
+    fn parses_new_command_tree() {
+        let cli =
+            Cli::try_parse_from(["ret2cli", "challenge", "submit", "pwn", "--flag", "x"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Challenge {
+                command: ChallengeCommand::Submit(_)
+            })
+        ));
     }
-    Err(CliError::Config(format!(
-        "challenge '{challenge}' not found"
-    )))
+    #[test]
+    fn accepts_no_command_for_interactive_mode() {
+        assert!(Cli::try_parse_from(["ret2cli"]).unwrap().command.is_none());
+    }
 }
