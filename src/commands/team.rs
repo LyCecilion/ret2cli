@@ -54,15 +54,9 @@ pub async fn teams(
 
     let path = format!("game/{game_id}/team");
 
-    #[derive(Deserialize)]
-    struct TeamPage {
-        data: Option<Vec<TeamInfo>>,
-        #[serde(default)]
-        records: Option<Vec<TeamInfo>>,
-    }
 
-    let response: TeamPage = client.get(&path, &[], config, profile_name).await?;
-    let teams = response.data.or(response.records).unwrap_or_default();
+    let (teams, _total): (Vec<TeamInfo>, i64) =
+        client.get(&path, &[], config, profile_name).await?;
 
     if json {
         output::print_json(&teams);
@@ -118,15 +112,9 @@ pub async fn team(
         } else {
             let list_path = format!("game/{game_id}/team");
 
-            #[derive(Deserialize)]
-            struct TeamPage {
-                data: Option<Vec<TeamInfo>>,
-                #[serde(default)]
-                records: Option<Vec<TeamInfo>>,
-            }
 
-            let response: TeamPage = client.get(&list_path, &[], config, profile_name).await?;
-            let teams = response.data.or(response.records).unwrap_or_default();
+            let (teams, _total): (Vec<TeamInfo>, i64) =
+                client.get(&list_path, &[], config, profile_name).await?;
 
             teams
                 .iter()

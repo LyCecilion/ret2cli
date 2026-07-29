@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
@@ -15,35 +15,45 @@ use crate::{
 pub struct GameInfo {
     pub id: i64,
     pub name: String,
-    pub description: Option<String>,
-    pub introduction: Option<String>,
-    pub r#type: Option<String>,
-    pub start_at: Option<String>,
-    pub end_at: Option<String>,
-    pub is_active: Option<bool>,
-    pub team_count: Option<i64>,
-    pub team_limit: Option<i64>,
-    pub status: Option<i64>,
+    pub brief: Option<String>,
+    pub start_at: i64,
+    pub end_at: i64,
+    pub host_type: Option<i64>,
+    pub team_size: Option<i64>,
+    pub hidden: Option<bool>,
+    pub offline: Option<bool>,
+    pub frozen: Option<bool>,
 }
 
 impl GameInfo {
     fn status_str(&self) -> &str {
-        let now = Utc::now();
-        let start = self
-            .start_at
-            .as_ref()
-            .and_then(|s| s.parse::<DateTime<Utc>>().ok());
-        let end = self
-            .end_at
-            .as_ref()
-            .and_then(|s| s.parse::<DateTime<Utc>>().ok());
+        let now = Utc::now().timestamp();
+        if self.start_at > now {
+            "upcoming"
+        } else if self.end_at < now {
+            "ended"
+        } else if self.frozen.unwrap_or(false) {
+            "frozen"
+        } else {
+            "active"
+        }
+    }
 
-        match (start, end) {
-            (Some(s), Some(_e)) if now < s => "upcoming",
-            (Some(_), Some(e)) if now > e => "ended",
-            (Some(_), Some(_)) => "active",
-            (None, Some(e)) if now > e => "ended",
-            _ => "active",
+    fn format_ts(ts: i64) -> String {
+        if ts == 0 {
+            return "—".to_owned();
+        }
+        Utc.timestamp_opt(ts, 0)
+            .single()
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| ts.to_string())
+    }
+
+    fn host_type_str(&self) -> &str {
+        match self.host_type.unwrap_or(0) {
+            0 => "Individual",
+            1 => "Team",
+            _ => "Unknown",
         }
     }
 }
@@ -60,8 +70,6 @@ struct GameRow {
     start: String,
     #[tabled(rename = "End")]
     end: String,
-    #[tabled(rename = "Teams")]
-    teams: String,
     #[tabled(rename = "Status")]
     status: String,
 }
@@ -75,31 +83,14 @@ pub async fn games(
 ) -> CliResult<()> {
     let page_str = args.page.to_string();
     let page_size_str = args.page_size.to_string();
-    let mut query: Vec<(&str, &str)> = vec![
+    let query: Vec<(&str, &str)> = vec![
         ("page", &page_str),
         ("page_size", &page_size_str),
     ];
-    let type_str;
-    if let Some(ref t) = args.r#type {
-        type_str = t.clone();
-        query.push(("type", &type_str));
-    }
 
-    #[derive(Deserialize)]
-    struct GamePage {
-        data: Option<Vec<GameInfo>>,
-        #[serde(default)]
-        records: Option<Vec<GameInfo>>,
-        #[serde(default)]
-        items: Option<Vec<GameInfo>>,
-    }
-
-    let response: GamePage = client.get("game", &query, config, profile_name).await?;
-    let games = response
-        .data
-        .or(response.records)
-        .or(response.items)
-        .unwrap_or_default();
+    // Response: [data_array, total_count]
+    let (games, _total): (Vec<GameInfo>, i64) =
+        client.get("game", &query, config, profile_name).await?;
 
     if json {
         output::print_json(&games);
@@ -108,20 +99,15 @@ pub async fn games(
             .into_iter()
             .map(|g| {
                 let status = g.status_str().to_owned();
-                let game_type = g.r#type.unwrap_or_else(|| "Game".to_owned());
-                let start = g.start_at.unwrap_or_else(|| "—".to_owned());
-                let end = g.end_at.unwrap_or_else(|| "—".to_owned());
-                let teams = g
-                    .team_count
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "—".to_owned());
+                let game_type = g.host_type_str().to_owned();
+                let start = GameInfo::format_ts(g.start_at);
+                let end = GameInfo::format_ts(g.end_at);
                 GameRow {
                     id: g.id,
                     name: g.name,
                     game_type,
                     start,
                     end,
-                    teams,
                     status,
                 }
             })
@@ -158,31 +144,23 @@ pub async fn game(
         output::print_json(&game);
     } else {
         let id_str = game.id.to_string();
-        let teams_str = game
-            .team_count
-            .map(|c| c.to_string())
-            .unwrap_or_else(|| "—".to_owned());
+        let start_str = GameInfo::format_ts(game.start_at);
+        let end_str = GameInfo::format_ts(game.end_at);
         let status_str = game.status_str();
+
         let pairs: Vec<(&str, &str)> = vec![
             ("ID", &id_str),
             ("Name", game.name.as_str()),
-            ("Type", game.r#type.as_deref().unwrap_or("—")),
-            ("Start", game.start_at.as_deref().unwrap_or("—")),
-            ("End", game.end_at.as_deref().unwrap_or("—")),
-            ("Teams", &teams_str),
+            ("Type", game.host_type_str()),
+            ("Start", &start_str),
+            ("End", &end_str),
             ("Status", status_str),
         ];
         output::print_key_value(&pairs);
 
-        if let Some(ref desc) = game.description {
+        if let Some(ref brief) = game.brief {
             println!();
-            println!("Description:");
-            output::print_markdown(desc);
-        }
-        if let Some(ref intro) = game.introduction {
-            println!();
-            println!("Introduction:");
-            output::print_markdown(intro);
+            println!("{}", brief);
         }
     }
 
@@ -212,15 +190,9 @@ pub async fn scoreboard(
     let path = format!("game/{game_id}/team");
     let query = &[("order_by", "score"), ("asc", "false")];
 
-    #[derive(Deserialize)]
-    struct TeamPage {
-        data: Option<Vec<TeamEntry>>,
-        #[serde(default)]
-        records: Option<Vec<TeamEntry>>,
-    }
-
-    let response: TeamPage = client.get(&path, query, config, profile_name).await?;
-    let teams = response.data.or(response.records).unwrap_or_default();
+    // Response: [data_array, total_count]
+    let (teams, _total): (Vec<TeamEntry>, i64) =
+        client.get(&path, query, config, profile_name).await?;
 
     #[derive(Tabled)]
     struct ScoreRow {

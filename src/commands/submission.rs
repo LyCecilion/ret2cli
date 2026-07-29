@@ -42,15 +42,9 @@ pub async fn submissions(
     let subs: Vec<SubmissionInfo> = if let Some(game_id) = game_id {
         let path = format!("game/{game_id}/solve");
 
-        #[derive(Deserialize)]
-        struct SolvePage {
-            data: Option<Vec<SubmissionInfo>>,
-            #[serde(default)]
-            records: Option<Vec<SubmissionInfo>>,
-        }
-
-        let response: SolvePage = client.get(&path, &[], config, profile_name).await?;
-        response.data.or(response.records).unwrap_or_default()
+        let (subs, _total): (Vec<SubmissionInfo>, i64) =
+            client.get(&path, &[], config, profile_name).await?;
+        subs
     } else {
         // Try recent games
         #[derive(Deserialize)]
@@ -58,38 +52,19 @@ pub async fn submissions(
             id: i64,
         }
 
-        #[derive(Deserialize)]
-        struct GamePage {
-            data: Option<Vec<GameItem>>,
-            #[serde(default)]
-            records: Option<Vec<GameItem>>,
-        }
-
-        let games_response: GamePage =
+        let (games, _total): (Vec<GameItem>, i64) =
             client.get("game", &[("page_size", "10")], config, profile_name).await?;
-        let games = games_response
-            .data
-            .or(games_response.records)
-            .unwrap_or_default();
+
 
         let mut all_subs = Vec::new();
         for g in games {
             let path = format!("game/{}/solve", g.id);
 
-            #[derive(Deserialize)]
-            struct SolvePage {
-                data: Option<Vec<SubmissionInfo>>,
-                #[serde(default)]
-                records: Option<Vec<SubmissionInfo>>,
-            }
-
-            if let Ok(response) = client
-                .get::<SolvePage>(&path, &[], config, profile_name)
+            if let Ok((data, _total)) = client
+                .get::<(Vec<SubmissionInfo>, i64)>(&path, &[], config, profile_name)
                 .await
             {
-                if let Some(data) = response.data.or(response.records) {
-                    all_subs.extend(data);
-                }
+                all_subs.extend(data);
             }
         }
         all_subs

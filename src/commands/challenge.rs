@@ -56,15 +56,9 @@ pub async fn challenges(
 
     let path = format!("game/{game_id}/challenge");
 
-    #[derive(Deserialize)]
-    struct ChallengePage {
-        data: Option<Vec<ChallengeInfo>>,
-        #[serde(default)]
-        records: Option<Vec<ChallengeInfo>>,
-    }
 
-    let response: ChallengePage = client.get(&path, &[], config, profile_name).await?;
-    let challenges = response.data.or(response.records).unwrap_or_default();
+    let (challenges, _total): (Vec<ChallengeInfo>, i64) =
+        client.get(&path, &[], config, profile_name).await?;
 
     if json {
         output::print_json(&challenges);
@@ -248,15 +242,9 @@ pub async fn hints(
 
     let path = format!("game/{game_id}/challenge/{challenge_id}/hint");
 
-    #[derive(Deserialize)]
-    struct HintPage {
-        data: Option<Vec<HintInfo>>,
-        #[serde(default)]
-        records: Option<Vec<HintInfo>>,
-    }
 
-    let response: HintPage = client.get(&path, &[], config, profile_name).await?;
-    let hints = response.data.or(response.records).unwrap_or_default();
+    let (hints, _total): (Vec<HintInfo>, i64) =
+        client.get(&path, &[], config, profile_name).await?;
 
     if json {
         output::print_json(&hints);
@@ -319,15 +307,8 @@ pub async fn hint(
         // List available hints
         let list_path = format!("game/{game_id}/challenge/{challenge_id}/hint");
 
-        #[derive(Deserialize)]
-        struct HintPage {
-            data: Option<Vec<HintInfo>>,
-            #[serde(default)]
-            records: Option<Vec<HintInfo>>,
-        }
-
-        let response: HintPage = client.get(&list_path, &[], config, profile_name).await?;
-        let hints = response.data.or(response.records).unwrap_or_default();
+        let (hints, _total): (Vec<HintInfo>, i64) =
+            client.get(&list_path, &[], config, profile_name).await?;
 
         let locked: Vec<_> = hints
             .iter()

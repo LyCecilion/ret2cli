@@ -107,14 +107,14 @@ async fn resolve_game_id(
     if let Ok(id) = game.parse::<i64>() {
         return Ok(Some(id));
     }
-    // Otherwise resolve by name from game list
+    // Response: [data_array, total_count]
     #[derive(serde::Deserialize)]
     struct GameItem {
         id: i64,
         name: String,
     }
 
-    let games: Vec<GameItem> = client
+    let (games, _total): (Vec<GameItem>, i64) = client
         .get("game", &[("page_size", "100")], config, profile_name)
         .await?;
     for g in &games {
@@ -153,7 +153,7 @@ async fn resolve_challenge_id(
     }
 
     let path = format!("game/{game_id}/challenge");
-    let challenges: Vec<ChallengeItem> = client
+    let (challenges, _total): (Vec<ChallengeItem>, i64) = client
         .get(&path, &[("page_size", "500")], config, profile_name)
         .await?;
 
