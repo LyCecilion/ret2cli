@@ -53,12 +53,6 @@ pub async fn teams(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
-    let teams = fetch_teams(client, config, profile_name, game_id).await?;
-    if json {
-        output::print_json(&teams);
-        return Ok(());
-    }
     #[derive(Tabled)]
     struct Row {
         #[tabled(rename = "ID")]
@@ -69,6 +63,12 @@ pub async fn teams(
         tag: String,
         #[tabled(rename = "Score")]
         score: i32,
+    }
+    let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
+    let teams = fetch_teams(client, config, profile_name, game_id).await?;
+    if json {
+        output::print_json(&teams);
+        return Ok(());
     }
     let rows: Vec<_> = teams
         .into_iter()
@@ -131,7 +131,7 @@ async fn show_team(
         return Ok(());
     }
     let score = team.score.to_string();
-    let rank = rank.map(|v| v.to_string()).unwrap_or_else(|| "—".to_owned());
+    let rank = rank.map_or_else(|| "—".to_owned(), |v| v.to_string());
     let solve_count = solves.iter().filter(|s| s.solved == Some(true)).count().to_string();
     output::print_key_value(&[
         ("Name", &team.name),
@@ -247,6 +247,7 @@ async fn resolve_team(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -304,7 +305,7 @@ mod tests {
             );
             socket.write_all(response.as_bytes()).await.unwrap();
         });
-        let mut client = Client::new(format!("http://{addr}"), None).unwrap();
+        let mut client = Client::new(&format!("http://{addr}"), None).unwrap();
         let mut config = ClientConfig::default();
         team_join(
             &mut client,

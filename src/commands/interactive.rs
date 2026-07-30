@@ -17,7 +17,7 @@ pub async fn run(config: &mut ClientConfig, requested_profile: Option<&str>) -> 
         if !config.profiles.contains_key(name) {
             return Err(CliError::Config(format!("profile '{name}' not found")));
         }
-        config.active_profile = name.to_owned();
+        config.active_profile = name.to_string();
         config.save()?;
     }
     ensure_url(config)?;
@@ -173,17 +173,17 @@ async fn account_menu(config: &mut ClientConfig) -> CliResult<()> {
             1 => select_saved_account(config)?,
             2 => {
                 with_client(config, |c, cfg| Box::pin(commands::auth::status(c, cfg, false, None)))
-                    .await?
+                    .await?;
             }
             3 => {
                 with_client(config, |c, cfg| Box::pin(commands::auth::show(c, cfg, false, None)))
-                    .await?
+                    .await?;
             }
             4 => prompt_login(config).await?,
             5 => prompt_register(config).await?,
             6 => {
                 with_client(config, |c, cfg| Box::pin(commands::auth::logout(c, cfg, false, None)))
-                    .await?
+                    .await?;
             }
             7 => remove_saved_account(config)?,
             _ => return Ok(()),
@@ -229,7 +229,11 @@ fn profile_menu(config: &mut ClientConfig) -> CliResult<()> {
             1 => {
                 let name = input("Profile name")?;
                 let url = input("Ret2Shell URL")?;
-                commands::profile_add(config, ProfileAddArgs { name, url, use_now: false }, false)?;
+                commands::profile_add(
+                    config,
+                    &ProfileAddArgs { name, url, use_now: false },
+                    false,
+                )?;
             }
             2 => {
                 let mut names: Vec<_> = config.profiles.keys().cloned().collect();
@@ -260,7 +264,7 @@ fn profile_menu(config: &mut ClientConfig) -> CliResult<()> {
                     .map_err(dialoguer_error)?;
                 commands::profile_remove(
                     config,
-                    crate::cli::ProfileRemoveArgs { name: names[idx].clone(), yes: false },
+                    &crate::cli::ProfileRemoveArgs { name: names[idx].clone(), yes: false },
                     false,
                 )?;
             }
@@ -343,8 +347,10 @@ async fn challenge_actions(config: &mut ClientConfig, challenge_id: String) -> C
         let args = || ChallengeArgs { challenge: challenge_id.clone(), game: None };
         match choice {
             0 => {
-                with_client(config, |c, cfg| Box::pin(challenge::view(c, cfg, args(), false, None)))
-                    .await?
+                with_client(config, |c, cfg| {
+                    Box::pin(challenge::view(c, cfg, args(), false, None))
+                })
+                .await?;
             }
             1 => {
                 let flag = input("Flag")?;
@@ -367,7 +373,7 @@ async fn challenge_actions(config: &mut ClientConfig, challenge_id: String) -> C
                 with_client(config, |c, cfg| {
                     Box::pin(challenge::hints(c, cfg, args(), false, None))
                 })
-                .await?
+                .await?;
             }
             3 => {
                 let id: i64 =
@@ -391,17 +397,19 @@ async fn challenge_actions(config: &mut ClientConfig, challenge_id: String) -> C
                 with_client(config, |c, cfg| {
                     Box::pin(challenge::start(c, cfg, args(), false, None))
                 })
-                .await?
+                .await?;
             }
             5 => {
-                with_client(config, |c, cfg| Box::pin(challenge::stop(c, cfg, args(), false, None)))
-                    .await?
+                with_client(config, |c, cfg| {
+                    Box::pin(challenge::stop(c, cfg, args(), false, None))
+                })
+                .await?;
             }
             6 => {
                 with_client(config, |c, cfg| {
                     Box::pin(challenge::files(c, cfg, args(), false, None))
                 })
-                .await?
+                .await?;
             }
             7 => interactive_download(config, challenge_id.clone()).await?,
             _ => return Ok(()),
@@ -457,13 +465,13 @@ async fn team_menu(config: &mut ClientConfig) -> CliResult<()> {
                 with_client(config, |c, cfg| {
                     Box::pin(team::my(c, cfg, GameContextArgs::default(), false, None))
                 })
-                .await?
+                .await?;
             }
             1 => {
                 with_client(config, |c, cfg| {
                     Box::pin(team::teams(c, cfg, GameContextArgs::default(), false, None))
                 })
-                .await?
+                .await?;
             }
             2 => {
                 let name = input("Team name or ID")?;
@@ -559,7 +567,7 @@ fn dialoguer_error(error: dialoguer::Error) -> CliError {
 }
 fn make_client(config: &ClientConfig) -> CliResult<Client> {
     let p = config.active_profile_resolved(None)?;
-    Client::new(p.url.clone(), p.active_token().map(str::to_owned))
+    Client::new(&p.url, p.active_token().map(str::to_owned))
 }
 
 async fn with_client<F>(config: &mut ClientConfig, f: F) -> CliResult<()>

@@ -34,7 +34,7 @@ pub async fn login(
     let password = require_or_password(args.password, "Password", json)?;
 
     // A valid old token makes Ret2Shell reject /login as an already-authenticated request.
-    *client = Client::new(client.base_url.clone(), None)?;
+    *client = Client::new(&client.base_url, None)?;
     client.set_token_persistence(false);
     bind_profile_url(config, profile_name, &client.base_url)?;
 
@@ -151,7 +151,7 @@ pub async fn register(
     let nickname = require_or_input(args.nickname, "Nickname", json)?;
     let email = require_or_input(args.email, "Email", json)?;
     let password = require_or_password(args.password, "Password", json)?;
-    *client = Client::new(client.base_url.clone(), None)?;
+    *client = Client::new(&client.base_url, None)?;
     client.set_token_persistence(false);
     bind_profile_url(config, profile_name, &client.base_url)?;
     let captcha: CaptchaResponse =
@@ -289,20 +289,17 @@ pub async fn show(
         output::print_json(&value);
         return Ok(());
     }
-    let registered = value
-        .get("registered_at")
-        .and_then(|v| v.as_i64())
-        .map(|v| {
+    let registered = value.get("registered_at").and_then(serde_json::Value::as_i64).map_or_else(
+        || "—".to_owned(),
+        |v| {
             chrono::DateTime::from_timestamp(v, 0)
-                .map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string())
-                .unwrap_or_else(|| v.to_string())
-        })
-        .unwrap_or_else(|| "—".to_owned());
+                .map_or_else(|| v.to_string(), |d| d.format("%Y-%m-%d %H:%M UTC").to_string())
+        },
+    );
     let institute = value
         .get("institute_id")
-        .and_then(|v| v.as_i64())
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "—".to_owned());
+        .and_then(serde_json::Value::as_i64)
+        .map_or_else(|| "—".to_owned(), |v| v.to_string());
     output::print_key_value(&[
         ("Account", value.get("account").and_then(|v| v.as_str()).unwrap_or("—")),
         ("Nickname", value.get("nickname").and_then(|v| v.as_str()).unwrap_or("—")),

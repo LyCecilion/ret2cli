@@ -45,8 +45,7 @@ impl GameInfo {
         }
         Utc.timestamp_opt(ts, 0)
             .single()
-            .map(|dt| dt.format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|| ts.to_string())
+            .map_or_else(|| ts.to_string(), |dt| dt.format("%Y-%m-%d").to_string())
     }
 
     fn host_type_str(&self) -> &str {
@@ -151,7 +150,7 @@ pub async fn game(
 
         if let Some(ref brief) = game.brief {
             println!();
-            println!("{}", brief);
+            println!("{brief}");
         }
     }
 
@@ -172,6 +171,17 @@ pub async fn scoreboard(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
+    #[derive(Tabled)]
+    struct ScoreRow {
+        #[tabled(rename = "Rank")]
+        rank: String,
+        #[tabled(rename = "Team")]
+        name: String,
+        #[tabled(rename = "Score")]
+        score: String,
+        #[tabled(rename = "ID")]
+        id: i64,
+    }
     let game_id = resolve_game_id(client, config, profile_name, args.game.as_deref()).await?;
     let Some(game_id) = game_id else {
         return Err(crate::CliError::Config("specify --game".to_owned()));
@@ -184,18 +194,6 @@ pub async fn scoreboard(
     let (teams, _total): (Vec<TeamEntry>, i64) =
         client.get(&path, query, config, profile_name).await?;
 
-    #[derive(Tabled)]
-    struct ScoreRow {
-        #[tabled(rename = "Rank")]
-        rank: String,
-        #[tabled(rename = "Team")]
-        name: String,
-        #[tabled(rename = "Score")]
-        score: String,
-        #[tabled(rename = "ID")]
-        id: i64,
-    }
-
     if json {
         output::print_json(&teams);
     } else {
@@ -206,7 +204,7 @@ pub async fn scoreboard(
                 rank: (i + 1).to_string(),
                 id: t.id,
                 name: t.name.unwrap_or_default(),
-                score: t.score.map(|s| s.to_string()).unwrap_or_else(|| "0".to_owned()),
+                score: t.score.map_or_else(|| "0".to_owned(), |s| s.to_string()),
             })
             .collect();
         output::print_table(&rows);
@@ -236,6 +234,7 @@ pub async fn use_game(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     #[test]

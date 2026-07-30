@@ -276,5 +276,6 @@ pub struct TeamLeaveArgs {
 #[derive(Args, Debug, Clone)]
 pub struct CompletionArgs {
     #[arg(value_enum)]
+    #[allow(clippy::needless_pass_by_value)]
     pub shell: clap_complete::Shell,
 }

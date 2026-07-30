@@ -1,4 +1,4 @@
-use colored::*;
+use colored::Colorize;
 use serde::Serialize;
 use tabled::Tabled;
 

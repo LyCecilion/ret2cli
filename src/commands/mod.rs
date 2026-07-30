@@ -16,6 +16,7 @@ use crate::{
     output,
 };
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn completion(args: CompletionArgs) {
     let mut cmd = <crate::Cli as clap::CommandFactory>::command();
     let name = cmd.get_name().to_owned();
@@ -111,14 +112,14 @@ pub fn profile_show(config: &ClientConfig, name: Option<&str>, json: bool) -> Cl
     Ok(())
 }
 
-pub fn profile_add(config: &mut ClientConfig, args: ProfileAddArgs, json: bool) -> CliResult<()> {
+pub fn profile_add(config: &mut ClientConfig, args: &ProfileAddArgs, json: bool) -> CliResult<()> {
     if config.profiles.contains_key(&args.name) {
         return Err(CliError::Config(format!("profile '{}' already exists", args.name)));
     }
     reqwest::Url::parse(&args.url).map_err(|e| CliError::Config(format!("invalid URL: {e}")))?;
     config.profiles.insert(args.name.clone(), ConnectionProfile::new(args.url.clone()));
     if args.use_now {
-        config.active_profile = args.name.clone();
+        config.active_profile.clone_from(&args.name);
     }
     config.save()?;
     if json {
@@ -133,7 +134,7 @@ pub fn profile_use(config: &mut ClientConfig, name: &str, json: bool) -> CliResu
     if !config.profiles.contains_key(name) {
         return Err(CliError::Config(format!("profile '{name}' not found")));
     }
-    config.active_profile = name.to_owned();
+    config.active_profile = name.to_string();
     config.save()?;
     if json {
         output::print_json(&serde_json::json!({ "active_profile": name }));
@@ -145,7 +146,7 @@ pub fn profile_use(config: &mut ClientConfig, name: &str, json: bool) -> CliResu
 
 pub fn profile_remove(
     config: &mut ClientConfig,
-    args: ProfileRemoveArgs,
+    args: &ProfileRemoveArgs,
     json: bool,
 ) -> CliResult<()> {
     if args.name == "default" || args.name == config.active_profile {

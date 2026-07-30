@@ -89,13 +89,6 @@ pub async fn challenges(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
-    let items = fetch_challenges(client, config, profile_name, game_id).await?;
-    let solved = fetch_solved_ids(client, config, profile_name, game_id).await?;
-    if json {
-        output::print_json(&items);
-        return Ok(());
-    }
     #[derive(Tabled)]
     struct Row {
         #[tabled(rename = "ID")]
@@ -108,6 +101,13 @@ pub async fn challenges(
         tags: String,
         #[tabled(rename = "Solved")]
         solved: String,
+    }
+    let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
+    let items = fetch_challenges(client, config, profile_name, game_id).await?;
+    let solved = fetch_solved_ids(client, config, profile_name, game_id).await?;
+    if json {
+        output::print_json(&items);
+        return Ok(());
     }
     let rows: Vec<_> = items
         .into_iter()
@@ -221,14 +221,6 @@ pub async fn hints(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let (game_id, challenge_id) =
-        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
-            .await?;
-    let items = fetch_hints(client, config, profile_name, game_id, challenge_id).await?;
-    if json {
-        output::print_json(&items);
-        return Ok(());
-    }
     #[derive(Tabled)]
     struct Row {
         #[tabled(rename = "ID")]
@@ -239,6 +231,14 @@ pub async fn hints(
         status: String,
         #[tabled(rename = "Content")]
         content: String,
+    }
+    let (game_id, challenge_id) =
+        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
+            .await?;
+    let items = fetch_hints(client, config, profile_name, game_id, challenge_id).await?;
+    if json {
+        output::print_json(&items);
+        return Ok(());
     }
     let rows: Vec<_> = items
         .into_iter()
@@ -397,8 +397,7 @@ pub async fn download(
     let base = args
         .output
         .as_ref()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(safe_name(&args.challenge)));
+        .map_or_else(|| PathBuf::from(safe_name(&args.challenge)), PathBuf::from);
     if !single_output {
         std::fs::create_dir_all(&base)?;
     }
@@ -478,6 +477,7 @@ fn safe_name(value: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     #[test]

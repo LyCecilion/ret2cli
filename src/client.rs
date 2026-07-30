@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{
     Client as HttpClient, Method, Response, Url,
@@ -22,7 +23,12 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(base_url: String, token: Option<String>) -> CliResult<Self> {
+    /// Create a new API client.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::Config` if `base_url` is empty or consists only of slashes.
+    pub fn new(base_url: &str, token: Option<String>) -> CliResult<Self> {
         let base_url = base_url.trim_end_matches('/').to_owned();
         if base_url.is_empty() {
             return Err(CliError::Config("base URL cannot be empty".to_owned()));
@@ -39,7 +45,7 @@ impl Client {
         self.persist_token
     }
 
-    /// Build a full API URL: {base_url}/api/{path}
+    /// Build a full API URL: `{base_url}/api/{path}`
     fn url(&self, path: &str, query: &[(&str, &str)]) -> CliResult<Url> {
         let mut url =
             Url::parse(&format!("{}/api/{}", self.base_url, path.trim_start_matches('/')))
@@ -119,19 +125,19 @@ impl Client {
     /// Handle token refresh: if Set-Token returned and differs from current, update config.
     fn handle_token(
         &mut self,
-        new_token: Option<String>,
+        new_token: Option<&str>,
         config: &mut ClientConfig,
         profile_name: Option<&str>,
     ) -> CliResult<()> {
-        if let Some(ref new) = new_token {
+        if let Some(new) = new_token {
             if self.token.as_deref() != Some(new) {
-                self.token = Some(new.clone());
+                self.token = Some(new.to_owned());
                 if self.persist_token {
                     let profile = config.active_profile_mut(profile_name)?;
                     if let Some(account) = profile.active_account.clone()
                         && let Some(session) = profile.accounts.get_mut(&account)
                     {
-                        session.token.clone_from(new);
+                        session.token = String::from(new);
                         config.save()?;
                     }
                 }
@@ -142,6 +148,11 @@ impl Client {
 
     // --- Public HTTP methods ---
 
+    /// Send a GET request and deserialize the JSON response.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP, serialization, or config errors.
     pub async fn get<T: DeserializeOwned>(
         &mut self,
         path: &str,
@@ -151,10 +162,15 @@ impl Client {
     ) -> CliResult<T> {
         let response = self.request(Method::GET, path, query)?.send().await?;
         let (value, new_token) = self.typed_response::<T>(response).await?;
-        self.handle_token(new_token, config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(value)
     }
 
+    /// Send a GET request and return the raw JSON value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP or config errors.
     pub async fn get_value(
         &mut self,
         path: &str,
@@ -164,10 +180,15 @@ impl Client {
     ) -> CliResult<Value> {
         let response = self.request(Method::GET, path, query)?.send().await?;
         let (value, new_token) = self.json_response(response).await?;
-        self.handle_token(new_token, config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(value)
     }
 
+    /// Send a POST request with a JSON body and deserialize the response.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP, serialization, or config errors.
     pub async fn post<T: DeserializeOwned, B: Serialize + ?Sized>(
         &mut self,
         path: &str,
@@ -177,10 +198,15 @@ impl Client {
     ) -> CliResult<T> {
         let response = self.request(Method::POST, path, &[])?.json(body).send().await?;
         let (value, new_token) = self.typed_response::<T>(response).await?;
-        self.handle_token(new_token, config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(value)
     }
 
+    /// Send a POST request with a JSON body and return the raw JSON value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP or config errors.
     pub async fn post_value<B: Serialize + ?Sized>(
         &mut self,
         path: &str,
@@ -190,11 +216,15 @@ impl Client {
     ) -> CliResult<Value> {
         let response = self.request(Method::POST, path, &[])?.json(body).send().await?;
         let (value, new_token) = self.json_response(response).await?;
-        self.handle_token(new_token, config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(value)
     }
 
     /// POST JSON body, expect empty/no response body. Returns the new token if Set-Token header present.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP or config errors.
     pub async fn post_no_body<B: Serialize + ?Sized>(
         &mut self,
         path: &str,
@@ -204,10 +234,15 @@ impl Client {
     ) -> CliResult<Option<String>> {
         let response = self.request(Method::POST, path, &[])?.json(body).send().await?;
         let (_, new_token) = self.check_response(response).await?;
-        self.handle_token(new_token.clone(), config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(new_token)
     }
 
+    /// Send a PATCH request with a JSON body and deserialize the response.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP, serialization, or config errors.
     pub async fn patch<T: DeserializeOwned, B: Serialize + ?Sized>(
         &mut self,
         path: &str,
@@ -217,10 +252,15 @@ impl Client {
     ) -> CliResult<T> {
         let response = self.request(Method::PATCH, path, &[])?.json(body).send().await?;
         let (value, new_token) = self.typed_response::<T>(response).await?;
-        self.handle_token(new_token, config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(value)
     }
 
+    /// Send a DELETE request.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP or config errors.
     pub async fn delete(
         &mut self,
         path: &str,
@@ -229,10 +269,15 @@ impl Client {
     ) -> CliResult<()> {
         let response = self.request(Method::DELETE, path, &[])?.send().await?;
         let (_, new_token) = self.check_response(response).await?;
-        self.handle_token(new_token, config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(())
     }
 
+    /// Send a DELETE request and return the raw JSON value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP or config errors.
     pub async fn delete_value(
         &mut self,
         path: &str,
@@ -241,10 +286,15 @@ impl Client {
     ) -> CliResult<Value> {
         let response = self.request(Method::DELETE, path, &[])?.send().await?;
         let (value, new_token) = self.json_response(response).await?;
-        self.handle_token(new_token, config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(value)
     }
 
+    /// Download a file from a GET endpoint with streaming and optional progress bar.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP, I/O, or config errors.
     pub async fn download_query(
         &mut self,
         path: &str,
@@ -256,17 +306,15 @@ impl Client {
     ) -> CliResult<()> {
         let response = self.request(Method::GET, path, query)?.send().await?;
         let (response, new_token) = self.check_response(response).await?;
-        self.handle_token(new_token, config, profile_name)?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
 
         let pb = if show_progress {
+            let template = ProgressStyle::default_bar()
+                .template("{spinner:.green} [{bar:40.cyan/blue}] {bytes}/{total_bytes}")
+                .map_err(|_| CliError::Config("invalid progress template".to_owned()))?;
             response.content_length().map(|size| {
                 let pb = ProgressBar::new(size);
-                pb.set_style(
-                    ProgressStyle::default_bar()
-                        .template("{spinner:.green} [{bar:40.cyan/blue}] {bytes}/{total_bytes}")
-                        .unwrap()
-                        .progress_chars("#>-"),
-                );
+                pb.set_style(template.progress_chars("#>-"));
                 pb
             })
         } else {
@@ -274,7 +322,6 @@ impl Client {
         };
         let mut file = tokio::fs::File::create(output).await?;
         let mut stream = response.bytes_stream();
-        use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             if let Some(pb) = &pb {

@@ -91,6 +91,11 @@ impl Default for ClientConfig {
 }
 
 impl ClientConfig {
+    /// Load the configuration from disk, returning the default if none exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::Config` if the config file cannot be read or parsed.
     pub fn load() -> CliResult<Self> {
         let path = config_path()?;
         if !path.exists() {
@@ -110,6 +115,12 @@ impl ClientConfig {
         Ok(config)
     }
 
+    /// Write the current configuration to disk atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::Config` if the config directory cannot be created,
+    /// or if serialization, writing, or renaming the temp file fails.
     pub fn save(&self) -> CliResult<()> {
         let path = config_path()?;
         if let Some(parent) = path.parent() {
@@ -145,6 +156,11 @@ impl ClientConfig {
         migrated
     }
 
+    /// Resolve the active profile name from CLI arg, env var, or config default.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::Config` if the resolved profile name does not exist in `self.profiles`.
     pub fn active_profile_name<'a>(&'a self, cli_profile: Option<&'a str>) -> CliResult<String> {
         let name = cli_profile
             .map(str::to_owned)
@@ -157,20 +173,30 @@ impl ClientConfig {
         }
     }
 
+    /// Resolve the active profile and return a shared reference to it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::Config` if the profile name cannot be resolved or the profile is not found.
     pub fn active_profile_resolved(
         &self,
         cli_profile: Option<&str>,
     ) -> CliResult<&ConnectionProfile> {
         let name = self.active_profile_name(cli_profile)?;
-        Ok(self.profiles.get(&name).expect("validated profile"))
+        self.profiles.get(&name).ok_or_else(|| CliError::Config("profile not found".to_owned()))
     }
 
+    /// Resolve the active profile and return a mutable reference to it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::Config` if the profile name cannot be resolved or the profile is not found.
     pub fn active_profile_mut(
         &mut self,
         cli_profile: Option<&str>,
     ) -> CliResult<&mut ConnectionProfile> {
         let name = self.active_profile_name(cli_profile)?;
-        Ok(self.profiles.get_mut(&name).expect("validated profile"))
+        self.profiles.get_mut(&name).ok_or_else(|| CliError::Config("profile not found".to_owned()))
     }
 }
 
@@ -195,6 +221,7 @@ fn next_backup_path(path: &std::path::Path) -> PathBuf {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

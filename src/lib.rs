@@ -19,6 +19,12 @@ use crate::{
     config::ClientConfig,
 };
 
+/// Execute the CLI given parsed arguments.
+///
+/// # Errors
+///
+/// Returns `CliError` on configuration load failure, command dispatch failures,
+/// or network errors from API commands.
 pub async fn run(cli: Cli) -> CliResult<()> {
     let mut config = ClientConfig::load()?;
     let json = cli.json;
@@ -45,9 +51,9 @@ pub async fn run(cli: Cli) -> CliResult<()> {
                 Ok(())
             }
             ProfileCommand::Show { name } => commands::profile_show(&config, name.as_deref(), json),
-            ProfileCommand::Add(args) => commands::profile_add(&mut config, args, json),
+            ProfileCommand::Add(args) => commands::profile_add(&mut config, &args, json),
             ProfileCommand::Use { name } => commands::profile_use(&mut config, &name, json),
-            ProfileCommand::Remove(args) => commands::profile_remove(&mut config, args, json),
+            ProfileCommand::Remove(args) => commands::profile_remove(&mut config, &args, json),
         },
         Some(Commands::Account { command: AccountCommand::List }) => {
             commands::auth::list(&config, profile_name, json)
@@ -59,15 +65,9 @@ pub async fn run(cli: Cli) -> CliResult<()> {
             commands::auth::remove(&mut config, profile_name, &args, json)
         }
         command => {
-            dispatch_network(
-                command.expect("matched Some"),
-                cli.url,
-                cli.token,
-                &mut config,
-                profile_name,
-                json,
-            )
-            .await
+            let cmd =
+                command.ok_or_else(|| CliError::Config("unexpected command state".to_owned()))?;
+            dispatch_network(cmd, cli.url, cli.token, &mut config, profile_name, json).await
         }
     }
 }
@@ -88,7 +88,7 @@ async fn dispatch_network(
     let explicit_token = token_override.or_else(|| env::var("R2S_TOKEN").ok());
     let (base_url, token, persist_token) =
         resolve_connection(&profile_url, profile_token, explicit_url, explicit_token);
-    let mut client = Client::new(base_url, token)?;
+    let mut client = Client::new(&base_url, token)?;
     client.set_token_persistence(persist_token);
     match command {
         Commands::Account { command } => match command {
@@ -125,36 +125,9 @@ async fn dispatch_network(
                 commands::game::scoreboard(&mut client, config, args, json, profile_name).await
             }
         },
-        Commands::Challenge { command } => match command {
-            ChallengeCommand::List(args) => {
-                commands::challenge::challenges(&mut client, config, args, json, profile_name).await
-            }
-            ChallengeCommand::Show(args) => {
-                commands::challenge::view(&mut client, config, args, json, profile_name).await
-            }
-            ChallengeCommand::Submit(args) => {
-                commands::challenge::solve(&mut client, config, args, json, profile_name).await
-            }
-            ChallengeCommand::Hints(args) => {
-                commands::challenge::hints(&mut client, config, args, json, profile_name).await
-            }
-            ChallengeCommand::UnlockHint(args) => {
-                commands::challenge::unlock_hint(&mut client, config, args, json, profile_name)
-                    .await
-            }
-            ChallengeCommand::Start(args) => {
-                commands::challenge::start(&mut client, config, args, json, profile_name).await
-            }
-            ChallengeCommand::Stop(args) => {
-                commands::challenge::stop(&mut client, config, args, json, profile_name).await
-            }
-            ChallengeCommand::Files(args) => {
-                commands::challenge::files(&mut client, config, args, json, profile_name).await
-            }
-            ChallengeCommand::Download(args) => {
-                commands::challenge::download(&mut client, config, args, json, profile_name).await
-            }
-        },
+        Commands::Challenge { command } => {
+            dispatch_challenge(&mut client, config, command, json, profile_name).await
+        }
         Commands::Team { command } => match command {
             TeamCommand::List(args) => {
                 commands::team::teams(&mut client, config, args, json, profile_name).await
@@ -184,6 +157,44 @@ async fn dispatch_network(
     }
 }
 
+async fn dispatch_challenge(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    command: ChallengeCommand,
+    json: bool,
+    profile_name: Option<&str>,
+) -> CliResult<()> {
+    match command {
+        ChallengeCommand::List(args) => {
+            commands::challenge::challenges(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::Show(args) => {
+            commands::challenge::view(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::Submit(args) => {
+            commands::challenge::solve(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::Hints(args) => {
+            commands::challenge::hints(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::UnlockHint(args) => {
+            commands::challenge::unlock_hint(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::Start(args) => {
+            commands::challenge::start(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::Stop(args) => {
+            commands::challenge::stop(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::Files(args) => {
+            commands::challenge::files(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::Download(args) => {
+            commands::challenge::download(client, config, args, json, profile_name).await
+        }
+    }
+}
+
 fn resolve_connection(
     profile_url: &str,
     profile_token: Option<String>,
@@ -203,6 +214,11 @@ async fn resolve_game_id(
     profile_name: Option<&str>,
     game: Option<&str>,
 ) -> CliResult<Option<i64>> {
+    #[derive(serde::Deserialize)]
+    struct Item {
+        id: i64,
+        name: String,
+    }
     let value = match game {
         Some(value) => value.to_owned(),
         None => match config.active_profile_resolved(profile_name)?.game.clone() {
@@ -212,11 +228,6 @@ async fn resolve_game_id(
     };
     if let Ok(id) = value.parse() {
         return Ok(Some(id));
-    }
-    #[derive(serde::Deserialize)]
-    struct Item {
-        id: i64,
-        name: String,
     }
     let (items, _): (Vec<Item>, u64) =
         client.get("game", &[("page_size", "100")], config, profile_name).await?;
@@ -241,13 +252,13 @@ async fn resolve_challenge_id(
     game_id: i64,
     challenge: &str,
 ) -> CliResult<i64> {
-    if let Ok(id) = challenge.parse() {
-        return Ok(id);
-    }
     #[derive(serde::Deserialize)]
     struct Item {
         id: i64,
         name: String,
+    }
+    if let Ok(id) = challenge.parse() {
+        return Ok(id);
     }
     let path = format!("game/{game_id}/challenge");
     let (items, _): (Vec<Item>, u64) = client.get(&path, &[], config, profile_name).await?;
@@ -266,6 +277,7 @@ async fn resolve_challenge_id(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use crate::{
         Cli,

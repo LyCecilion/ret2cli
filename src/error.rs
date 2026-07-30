@@ -18,15 +18,18 @@ pub enum CliError {
 }
 
 impl CliError {
+    #[must_use]
     pub fn exit_code(&self) -> i32 {
         match self {
-            Self::Config(_) | Self::Serialize(_) | Self::Io(_) => 1,
             Self::Request(_) => 5,
-            Self::Api { status, .. } if *status == StatusCode::UNAUTHORIZED => 2,
-            Self::Api { status, .. } if *status == StatusCode::FORBIDDEN => 3,
-            Self::Api { status, .. } if *status == StatusCode::NOT_FOUND => 4,
-            Self::Api { status, .. } if status.is_server_error() => 5,
-            Self::Api { .. } => 1,
+            Self::Api { status, .. } => match status {
+                s if *s == StatusCode::UNAUTHORIZED => 2,
+                s if *s == StatusCode::FORBIDDEN => 3,
+                s if *s == StatusCode::NOT_FOUND => 4,
+                s if s.is_server_error() => 5,
+                _ => 1,
+            },
+            _ => 1,
         }
     }
 }
