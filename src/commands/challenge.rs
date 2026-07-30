@@ -140,9 +140,7 @@ pub async fn view(
     }
     let score = item.score.to_string();
     let tag_text = tags(&item.tag);
-    let solved = fetch_solved_ids(client, config, profile_name, game_id)
-        .await?
-        .contains(&id);
+    let solved = fetch_solved_ids(client, config, profile_name, game_id).await?.contains(&id);
     output::print_key_value(&[
         ("Name", &item.name),
         ("Score", &score),
@@ -173,14 +171,8 @@ pub async fn solve(
         resolve_challenge_id(client, config, profile_name, game_id, &args.challenge).await?;
     let flag = require_or_input(args.flag, "Flag", json)?;
     let path = format!("game/{game_id}/challenge/{challenge_id}/submit");
-    let mut submission: SubmissionInfo = client
-        .post(
-            &path,
-            &serde_json::json!({ "content": flag }),
-            config,
-            profile_name,
-        )
-        .await?;
+    let mut submission: SubmissionInfo =
+        client.post(&path, &serde_json::json!({ "content": flag }), config, profile_name).await?;
     for attempt in 0..10 {
         if submission.solved.is_some() {
             break;
@@ -189,9 +181,7 @@ pub async fn solve(
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
         let id = submission.id.to_string();
-        submission = client
-            .get(&path, &[("id", &id)], config, profile_name)
-            .await?;
+        submission = client.get(&path, &[("id", &id)], config, profile_name).await?;
     }
     match submission.solved {
         Some(true) => {
@@ -209,10 +199,7 @@ pub async fn solve(
             "incorrect flag: {}",
             submission.result.as_deref().unwrap_or("rejected")
         ))),
-        None => Err(CliError::Config(format!(
-            "submission {} is still pending",
-            submission.id
-        ))),
+        None => Err(CliError::Config(format!("submission {} is still pending", submission.id))),
     }
 }
 
@@ -234,14 +221,9 @@ pub async fn hints(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let (game_id, challenge_id) = resolve_context(
-        client,
-        config,
-        profile_name,
-        args.game.as_deref(),
-        &args.challenge,
-    )
-    .await?;
+    let (game_id, challenge_id) =
+        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
+            .await?;
     let items = fetch_hints(client, config, profile_name, game_id, challenge_id).await?;
     if json {
         output::print_json(&items);
@@ -264,11 +246,7 @@ pub async fn hints(
             id: h.id,
             cost: h.cost,
             status: if h.locked() { "Locked" } else { "Available" }.to_owned(),
-            content: if h.locked() {
-                "—".to_owned()
-            } else {
-                h.content
-            },
+            content: if h.locked() { "—".to_owned() } else { h.content },
         })
         .collect();
     output::print_table(&rows);
@@ -282,14 +260,9 @@ pub async fn unlock_hint(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let (game_id, challenge_id) = resolve_context(
-        client,
-        config,
-        profile_name,
-        args.game.as_deref(),
-        &args.challenge,
-    )
-    .await?;
+    let (game_id, challenge_id) =
+        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
+            .await?;
     let id = if let Some(id) = args.id {
         id
     } else {
@@ -301,15 +274,12 @@ pub async fn unlock_hint(
         if locked.len() == 1 && !json {
             locked[0].id
         } else {
-            return Err(CliError::Config(
-                "specify --id for the hint to unlock".to_owned(),
-            ));
+            return Err(CliError::Config("specify --id for the hint to unlock".to_owned()));
         }
     };
     let path = format!("game/{game_id}/challenge/{challenge_id}/hint/unlock");
-    let _: serde_json::Value = client
-        .post(&path, &serde_json::json!({"id": id}), config, profile_name)
-        .await?;
+    let _: serde_json::Value =
+        client.post(&path, &serde_json::json!({"id": id}), config, profile_name).await?;
     let unlocked = fetch_hints(client, config, profile_name, game_id, challenge_id)
         .await?
         .into_iter()
@@ -349,19 +319,13 @@ async fn instance_action(
     profile_name: Option<&str>,
     start: bool,
 ) -> CliResult<()> {
-    let (game_id, challenge_id) = resolve_context(
-        client,
-        config,
-        profile_name,
-        args.game.as_deref(),
-        &args.challenge,
-    )
-    .await?;
+    let (game_id, challenge_id) =
+        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
+            .await?;
     let path = format!("game/{game_id}/challenge/{challenge_id}/instance");
     if start {
-        let _: serde_json::Value = client
-            .post_value(&path, &serde_json::json!({}), config, profile_name)
-            .await?;
+        let _: serde_json::Value =
+            client.post_value(&path, &serde_json::json!({}), config, profile_name).await?;
     } else {
         client.delete(&path, config, profile_name).await?;
     }
@@ -392,14 +356,9 @@ pub async fn files(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let (game_id, challenge_id) = resolve_context(
-        client,
-        config,
-        profile_name,
-        args.game.as_deref(),
-        &args.challenge,
-    )
-    .await?;
+    let (game_id, challenge_id) =
+        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
+            .await?;
     let items = fetch_files(client, config, profile_name, game_id, challenge_id).await?;
     if json {
         output::print_json(&items);
@@ -418,30 +377,21 @@ pub async fn download(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let (game_id, challenge_id) = resolve_context(
-        client,
-        config,
-        profile_name,
-        args.game.as_deref(),
-        &args.challenge,
-    )
-    .await?;
+    let (game_id, challenge_id) =
+        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
+            .await?;
     let all = fetch_files(client, config, profile_name, game_id, challenge_id).await?;
     let selected: Vec<_> = if let Some(name) = &args.file {
         let matches: Vec<_> = all.into_iter().filter(|f| &f.file == name).collect();
         if matches.len() != 1 {
-            return Err(CliError::Config(format!(
-                "attachment '{name}' is missing or ambiguous"
-            )));
+            return Err(CliError::Config(format!("attachment '{name}' is missing or ambiguous")));
         }
         matches
     } else {
         all
     };
     if selected.is_empty() {
-        return Err(CliError::Config(
-            "challenge has no downloadable attachments".to_owned(),
-        ));
+        return Err(CliError::Config("challenge has no downloadable attachments".to_owned()));
     }
     let single_output = args.file.is_some() && args.output.is_some();
     let base = args
@@ -459,11 +409,7 @@ pub async fn download(
             .file_name()
             .and_then(|s| s.to_str())
             .ok_or_else(|| CliError::Config("invalid attachment filename".to_owned()))?;
-        let target = if single_output {
-            base.clone()
-        } else {
-            base.join(filename)
-        };
+        let target = if single_output { base.clone() } else { base.join(filename) };
         client
             .download_query(
                 &path,
@@ -490,13 +436,11 @@ async fn required_game(
     profile_name: Option<&str>,
     game: Option<&str>,
 ) -> CliResult<i64> {
-    resolve_game_id(client, config, profile_name, game)
-        .await?
-        .ok_or_else(|| {
-            CliError::Config(
-                "no game selected; run 'ret2cli game use <game>' or pass --game".to_owned(),
-            )
-        })
+    resolve_game_id(client, config, profile_name, game).await?.ok_or_else(|| {
+        CliError::Config(
+            "no game selected; run 'ret2cli game use <game>' or pass --game".to_owned(),
+        )
+    })
 }
 async fn resolve_context(
     client: &mut Client,
@@ -518,41 +462,19 @@ async fn fetch_solved_ids(
 ) -> CliResult<HashSet<i64>> {
     let path = format!("game/{game_id}/solve");
     let solves: Vec<SubmissionInfo> = client.get(&path, &[], config, profile_name).await?;
-    Ok(solves
-        .into_iter()
-        .filter(|s| s.solved == Some(true))
-        .map(|s| s.challenge_id)
-        .collect())
+    Ok(solves.into_iter().filter(|s| s.solved == Some(true)).map(|s| s.challenge_id).collect())
 }
 fn tags(tags: &[TagEntry]) -> String {
-    let value = tags
-        .iter()
-        .filter(|t| t.primary)
-        .map(|t| t.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    if value.is_empty() {
-        "—".to_owned()
-    } else {
-        value
-    }
+    let value =
+        tags.iter().filter(|t| t.primary).map(|t| t.name.as_str()).collect::<Vec<_>>().join(", ");
+    if value.is_empty() { "—".to_owned() } else { value }
 }
 fn safe_name(value: &str) -> String {
     let value: String = value
         .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
-                c
-            } else {
-                '_'
-            }
-        })
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '_' })
         .collect();
-    if value.is_empty() {
-        "attachments".to_owned()
-    } else {
-        value
-    }
+    if value.is_empty() { "attachments".to_owned() } else { value }
 }
 
 #[cfg(test)]

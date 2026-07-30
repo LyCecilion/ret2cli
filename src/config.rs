@@ -34,12 +34,7 @@ impl Default for ClientConfig {
     fn default() -> Self {
         let mut profiles = HashMap::new();
         profiles.insert("default".to_owned(), Profile::default());
-        Self {
-            active_profile: default_profile_name(),
-            profiles,
-            default: None,
-            default_game: None,
-        }
+        Self { active_profile: default_profile_name(), profiles, default: None, default_game: None }
     }
 }
 
@@ -84,8 +79,7 @@ impl ClientConfig {
     fn migrate_legacy(&mut self) -> bool {
         let Some(mut legacy_default) = self.default.take() else {
             if self.profiles.is_empty() {
-                self.profiles
-                    .insert("default".to_owned(), Profile::default());
+                self.profiles.insert("default".to_owned(), Profile::default());
                 return true;
             }
             return false;
@@ -93,9 +87,7 @@ impl ClientConfig {
         if legacy_default.game.is_none() {
             legacy_default.game = self.default_game.take();
         }
-        self.profiles
-            .entry("default".to_owned())
-            .or_insert(legacy_default);
+        self.profiles.entry("default".to_owned()).or_insert(legacy_default);
         self.active_profile = default_profile_name();
         true
     }
@@ -150,14 +142,8 @@ token = "school-token"
         assert!(config.migrate_legacy());
         assert_eq!(config.active_profile, "default");
         assert_eq!(config.profiles["default"].game.as_deref(), Some("11"));
-        assert_eq!(
-            config.profiles["default"].token.as_deref(),
-            Some("default-token")
-        );
-        assert_eq!(
-            config.profiles["school"].token.as_deref(),
-            Some("school-token")
-        );
+        assert_eq!(config.profiles["default"].token.as_deref(), Some("default-token"));
+        assert_eq!(config.profiles["school"].token.as_deref(), Some("school-token"));
         let serialized = toml::to_string(&config).unwrap();
         assert!(!serialized.contains("default_game"));
         assert!(!serialized.contains("[default]"));

@@ -27,14 +27,9 @@ pub fn require_or_input(value: Option<String>, prompt: &str, json: bool) -> CliR
         return Ok(value);
     }
     if json || !io::stdin().is_terminal() {
-        return Err(CliError::Config(format!(
-            "missing required value: {prompt}"
-        )));
+        return Err(CliError::Config(format!("missing required value: {prompt}")));
     }
-    Input::new()
-        .with_prompt(prompt)
-        .interact_text()
-        .map_err(|e| CliError::Io(io::Error::other(e)))
+    Input::new().with_prompt(prompt).interact_text().map_err(|e| CliError::Io(io::Error::other(e)))
 }
 
 pub fn require_or_password(value: Option<String>, prompt: &str, json: bool) -> CliResult<String> {
@@ -42,14 +37,9 @@ pub fn require_or_password(value: Option<String>, prompt: &str, json: bool) -> C
         return Ok(value);
     }
     if json || !io::stdin().is_terminal() {
-        return Err(CliError::Config(format!(
-            "missing required value: {prompt}"
-        )));
+        return Err(CliError::Config(format!("missing required value: {prompt}")));
     }
-    Password::new()
-        .with_prompt(prompt)
-        .interact()
-        .map_err(|e| CliError::Io(io::Error::other(e)))
+    Password::new().with_prompt(prompt).interact().map_err(|e| CliError::Io(io::Error::other(e)))
 }
 
 pub fn confirm(prompt: &str, yes: bool, json: bool) -> CliResult<bool> {
@@ -57,9 +47,7 @@ pub fn confirm(prompt: &str, yes: bool, json: bool) -> CliResult<bool> {
         return Ok(true);
     }
     if json || !io::stdin().is_terminal() {
-        return Err(CliError::Config(
-            "confirmation required; pass --yes".to_owned(),
-        ));
+        return Err(CliError::Config("confirmation required; pass --yes".to_owned()));
     }
     Confirm::new()
         .with_prompt(prompt)
@@ -87,11 +75,7 @@ pub fn profile_list(config: &ClientConfig, json: bool) {
         output::print_json(&rows);
     } else {
         for name in names {
-            let marker = if name == &config.active_profile {
-                "*"
-            } else {
-                " "
-            };
+            let marker = if name == &config.active_profile { "*" } else { " " };
             println!("{marker} {name:<16} {}", config.profiles[name].url);
         }
     }
@@ -114,14 +98,7 @@ pub fn profile_show(config: &ClientConfig, name: Option<&str>, json: bool) -> Cl
             ("Name", name),
             ("URL", &profile.url),
             ("Game", profile.game.as_deref().unwrap_or("—")),
-            (
-                "Status",
-                if profile.token.is_some() {
-                    "Token stored"
-                } else {
-                    "No token"
-                },
-            ),
+            ("Status", if profile.token.is_some() { "Token stored" } else { "No token" }),
         ]);
     }
     Ok(())
@@ -129,20 +106,12 @@ pub fn profile_show(config: &ClientConfig, name: Option<&str>, json: bool) -> Cl
 
 pub fn profile_add(config: &mut ClientConfig, args: ProfileAddArgs, json: bool) -> CliResult<()> {
     if config.profiles.contains_key(&args.name) {
-        return Err(CliError::Config(format!(
-            "profile '{}' already exists",
-            args.name
-        )));
+        return Err(CliError::Config(format!("profile '{}' already exists", args.name)));
     }
     reqwest::Url::parse(&args.url).map_err(|e| CliError::Config(format!("invalid URL: {e}")))?;
-    config.profiles.insert(
-        args.name.clone(),
-        Profile {
-            url: args.url.clone(),
-            token: None,
-            game: None,
-        },
-    );
+    config
+        .profiles
+        .insert(args.name.clone(), Profile { url: args.url.clone(), token: None, game: None });
     if args.use_now {
         config.active_profile = args.name.clone();
     }
@@ -175,15 +144,10 @@ pub fn profile_remove(
     json: bool,
 ) -> CliResult<()> {
     if args.name == "default" || args.name == config.active_profile {
-        return Err(CliError::Config(
-            "cannot remove the default or active profile".to_owned(),
-        ));
+        return Err(CliError::Config("cannot remove the default or active profile".to_owned()));
     }
     if !config.profiles.contains_key(&args.name) {
-        return Err(CliError::Config(format!(
-            "profile '{}' not found",
-            args.name
-        )));
+        return Err(CliError::Config(format!("profile '{}' not found", args.name)));
     }
     if !confirm(&format!("Remove profile '{}'?", args.name), args.yes, json)? {
         output::info("Aborted");

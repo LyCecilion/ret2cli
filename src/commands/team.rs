@@ -118,18 +118,12 @@ async fn show_team(
 ) -> CliResult<()> {
     let base = format!("game/{game_id}/team/{team_id}");
     let team: TeamInfo = client.get(&base, &[], config, profile_name).await?;
-    let rank: Option<u64> = client
-        .get(&format!("{base}/rank"), &[], config, profile_name)
-        .await
-        .ok();
-    let members: Vec<MemberInfo> = client
-        .get(&format!("{base}/member"), &[], config, profile_name)
-        .await
-        .unwrap_or_default();
-    let solves: Vec<TeamSolve> = client
-        .get(&format!("{base}/solve"), &[], config, profile_name)
-        .await
-        .unwrap_or_default();
+    let rank: Option<u64> =
+        client.get(&format!("{base}/rank"), &[], config, profile_name).await.ok();
+    let members: Vec<MemberInfo> =
+        client.get(&format!("{base}/member"), &[], config, profile_name).await.unwrap_or_default();
+    let solves: Vec<TeamSolve> =
+        client.get(&format!("{base}/solve"), &[], config, profile_name).await.unwrap_or_default();
     if json {
         output::print_json(
             &serde_json::json!({ "team": team, "rank": rank, "members": members, "solves": solves }),
@@ -137,14 +131,8 @@ async fn show_team(
         return Ok(());
     }
     let score = team.score.to_string();
-    let rank = rank
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "—".to_owned());
-    let solve_count = solves
-        .iter()
-        .filter(|s| s.solved == Some(true))
-        .count()
-        .to_string();
+    let rank = rank.map(|v| v.to_string()).unwrap_or_else(|| "—".to_owned());
+    let solve_count = solves.iter().filter(|s| s.solved == Some(true)).count().to_string();
     output::print_key_value(&[
         ("Name", &team.name),
         ("Tag", team.tag.as_deref().unwrap_or("—")),
@@ -172,12 +160,7 @@ pub async fn team_create(
     let name = require_or_input(args.name, "Team name", json)?;
     let path = format!("game/{game_id}/team");
     let result: TeamInfo = client
-        .post(
-            &path,
-            &serde_json::json!({ "name": name, "tag": args.tag }),
-            config,
-            profile_name,
-        )
+        .post(&path, &serde_json::json!({ "name": name, "tag": args.tag }), config, profile_name)
         .await?;
     if json {
         output::print_json(&result);
@@ -197,14 +180,8 @@ pub async fn team_join(
     let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
     let token = require_or_input(args.token, "Team invitation token", json)?;
     let path = format!("game/{game_id}/team");
-    let result: TeamInfo = client
-        .patch(
-            &path,
-            &serde_json::json!({ "token": token }),
-            config,
-            profile_name,
-        )
-        .await?;
+    let result: TeamInfo =
+        client.patch(&path, &serde_json::json!({ "token": token }), config, profile_name).await?;
     if json {
         output::print_json(&result);
     } else {
@@ -225,9 +202,7 @@ pub async fn team_leave(
         output::info("Aborted");
         return Ok(());
     }
-    client
-        .delete(&format!("game/{game_id}/team/self"), config, profile_name)
-        .await?;
+    client.delete(&format!("game/{game_id}/team/self"), config, profile_name).await?;
     if json {
         output::print_json(&serde_json::json!({ "left": true }));
     } else {
@@ -267,9 +242,7 @@ async fn resolve_team(
     if matches.len() == 1 {
         Ok(matches[0].id)
     } else {
-        Err(CliError::Config(format!(
-            "team '{value}' is missing or ambiguous"
-        )))
+        Err(CliError::Config(format!("team '{value}' is missing or ambiguous")))
     }
 }
 
@@ -336,10 +309,7 @@ mod tests {
         team_join(
             &mut client,
             &mut config,
-            TeamJoinArgs {
-                token: Some("invite".to_owned()),
-                game: Some("1".to_owned()),
-            },
+            TeamJoinArgs { token: Some("invite".to_owned()), game: Some("1".to_owned()) },
             true,
             None,
         )

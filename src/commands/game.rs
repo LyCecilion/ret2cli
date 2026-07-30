@@ -102,14 +102,7 @@ pub async fn games(
                 let game_type = g.host_type_str().to_owned();
                 let start = GameInfo::format_ts(g.start_at);
                 let end = GameInfo::format_ts(g.end_at);
-                GameRow {
-                    id: g.id,
-                    name: g.name,
-                    game_type,
-                    start,
-                    end,
-                    status,
-                }
+                GameRow { id: g.id, name: g.name, game_type, start, end, status }
             })
             .collect();
         output::print_table(&rows);
@@ -213,10 +206,7 @@ pub async fn scoreboard(
                 rank: (i + 1).to_string(),
                 id: t.id,
                 name: t.name.unwrap_or_default(),
-                score: t
-                    .score
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "0".to_owned()),
+                score: t.score.map(|s| s.to_string()).unwrap_or_else(|| "0".to_owned()),
             })
             .collect();
         output::print_table(&rows);

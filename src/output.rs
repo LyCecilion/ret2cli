@@ -11,9 +11,7 @@ pub fn print_table<T: Tabled>(rows: &[T]) {
         println!("No results.");
         return;
     }
-    let table = tabled::Table::new(rows)
-        .with(tabled::settings::Style::psql())
-        .to_string();
+    let table = tabled::Table::new(rows).with(tabled::settings::Style::psql()).to_string();
     println!("{table}");
 }
 

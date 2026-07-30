@@ -27,18 +27,13 @@ pub async fn run(config: &mut ClientConfig, requested_profile: Option<&str>) -> 
         )? {
             0 => {
                 let account = input("Account")?;
-                let password = Password::new()
-                    .with_prompt("Password")
-                    .interact()
-                    .map_err(dialoguer_error)?;
+                let password =
+                    Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
                 with_client(config, |c, cfg| {
                     Box::pin(commands::auth::login(
                         c,
                         cfg,
-                        LoginArgs {
-                            account: Some(account),
-                            password: Some(password),
-                        },
+                        LoginArgs { account: Some(account), password: Some(password) },
                         false,
                         None,
                     ))
@@ -49,10 +44,8 @@ pub async fn run(config: &mut ClientConfig, requested_profile: Option<&str>) -> 
                 let account = input("Account")?;
                 let nickname = input("Nickname")?;
                 let email = input("Email")?;
-                let password = Password::new()
-                    .with_prompt("Password")
-                    .interact()
-                    .map_err(dialoguer_error)?;
+                let password =
+                    Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
                 with_client(config, |c, cfg| {
                     Box::pin(commands::auth::register(
                         c,
@@ -134,10 +127,8 @@ fn ensure_url(config: &mut ClientConfig) -> CliResult<()> {
     if !config.active_profile_resolved(None)?.url.is_empty() {
         return Ok(());
     }
-    let url: String = Input::new()
-        .with_prompt("Ret2Shell URL")
-        .interact_text()
-        .map_err(dialoguer_error)?;
+    let url: String =
+        Input::new().with_prompt("Ret2Shell URL").interact_text().map_err(dialoguer_error)?;
     reqwest::Url::parse(&url).map_err(|e| CliError::Config(format!("invalid URL: {e}")))?;
     config.active_profile_mut(None)?.url = url;
     config.save()
@@ -145,46 +136,26 @@ fn ensure_url(config: &mut ClientConfig) -> CliResult<()> {
 
 async fn account_menu(config: &mut ClientConfig) -> CliResult<()> {
     loop {
-        match select(
-            "Account",
-            &[
-                "Status",
-                "Show account",
-                "Login",
-                "Register",
-                "Logout",
-                "Back",
-            ],
-        )? {
+        match select("Account", &["Status", "Show account", "Login", "Register", "Logout", "Back"])?
+        {
             0 => {
-                with_client(config, |c, cfg| {
-                    Box::pin(commands::auth::status(c, cfg, false, None))
-                })
-                .await?
+                with_client(config, |c, cfg| Box::pin(commands::auth::status(c, cfg, false, None)))
+                    .await?
             }
             1 => {
-                with_client(config, |c, cfg| {
-                    Box::pin(commands::auth::show(c, cfg, false, None))
-                })
-                .await?
+                with_client(config, |c, cfg| Box::pin(commands::auth::show(c, cfg, false, None)))
+                    .await?
             }
             2 => {
-                let account: String = Input::new()
-                    .with_prompt("Account")
-                    .interact_text()
-                    .map_err(dialoguer_error)?;
-                let password = Password::new()
-                    .with_prompt("Password")
-                    .interact()
-                    .map_err(dialoguer_error)?;
+                let account: String =
+                    Input::new().with_prompt("Account").interact_text().map_err(dialoguer_error)?;
+                let password =
+                    Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
                 with_client(config, |c, cfg| {
                     Box::pin(commands::auth::login(
                         c,
                         cfg,
-                        LoginArgs {
-                            account: Some(account),
-                            password: Some(password),
-                        },
+                        LoginArgs { account: Some(account), password: Some(password) },
                         false,
                         None,
                     ))
@@ -195,10 +166,8 @@ async fn account_menu(config: &mut ClientConfig) -> CliResult<()> {
                 let account = input("Account")?;
                 let nickname = input("Nickname")?;
                 let email = input("Email")?;
-                let password = Password::new()
-                    .with_prompt("Password")
-                    .interact()
-                    .map_err(dialoguer_error)?;
+                let password =
+                    Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
                 with_client(config, |c, cfg| {
                     Box::pin(commands::auth::register(
                         c,
@@ -216,10 +185,8 @@ async fn account_menu(config: &mut ClientConfig) -> CliResult<()> {
                 .await?;
             }
             4 => {
-                with_client(config, |c, cfg| {
-                    Box::pin(commands::auth::logout(c, cfg, false, None))
-                })
-                .await?
+                with_client(config, |c, cfg| Box::pin(commands::auth::logout(c, cfg, false, None)))
+                    .await?
             }
             _ => return Ok(()),
         }
@@ -233,15 +200,7 @@ fn profile_menu(config: &mut ClientConfig) -> CliResult<()> {
             1 => {
                 let name = input("Profile name")?;
                 let url = input("Ret2Shell URL")?;
-                commands::profile_add(
-                    config,
-                    ProfileAddArgs {
-                        name,
-                        url,
-                        use_now: false,
-                    },
-                    false,
-                )?;
+                commands::profile_add(config, ProfileAddArgs { name, url, use_now: false }, false)?;
             }
             2 => {
                 let mut names: Vec<_> = config.profiles.keys().cloned().collect();
@@ -272,10 +231,7 @@ fn profile_menu(config: &mut ClientConfig) -> CliResult<()> {
                     .map_err(dialoguer_error)?;
                 commands::profile_remove(
                     config,
-                    crate::cli::ProfileRemoveArgs {
-                        name: names[idx].clone(),
-                        yes: false,
-                    },
+                    crate::cli::ProfileRemoveArgs { name: names[idx].clone(), yes: false },
                     false,
                 )?;
             }
@@ -292,9 +248,8 @@ async fn select_game(config: &mut ClientConfig) -> CliResult<()> {
     }
     let items: Vec<Item> = with_client_value(config, |client, config| {
         Box::pin(async move {
-            let (items, _): (Vec<Item>, u64) = client
-                .get("game", &[("page_size", "100")], config, None)
-                .await?;
+            let (items, _): (Vec<Item>, u64) =
+                client.get("game", &[("page_size", "100")], config, None).await?;
             Ok(items)
         })
     })
@@ -302,23 +257,14 @@ async fn select_game(config: &mut ClientConfig) -> CliResult<()> {
     if items.is_empty() {
         return Err(CliError::Config("no games available".to_owned()));
     }
-    let labels: Vec<_> = items
-        .iter()
-        .map(|g| format!("{}  {}", g.id, g.name))
-        .collect();
+    let labels: Vec<_> = items.iter().map(|g| format!("{}  {}", g.id, g.name)).collect();
     let idx = Select::new()
         .with_prompt("Select game")
         .items(&labels)
         .interact()
         .map_err(dialoguer_error)?;
     with_client(config, |c, cfg| {
-        Box::pin(game::use_game(
-            c,
-            cfg,
-            items[idx].id.to_string(),
-            None,
-            false,
-        ))
+        Box::pin(game::use_game(c, cfg, items[idx].id.to_string(), None, false))
     })
     .await
 }
@@ -333,10 +279,8 @@ async fn challenge_menu(config: &mut ClientConfig) -> CliResult<()> {
         if items.is_empty() {
             return Err(CliError::Config("no challenges available".to_owned()));
         }
-        let mut labels: Vec<_> = items
-            .iter()
-            .map(|c| format!("{}  {}  [{}]", c.id, c.name, c.score))
-            .collect();
+        let mut labels: Vec<_> =
+            items.iter().map(|c| format!("{}  {}  [{}]", c.id, c.name, c.score)).collect();
         labels.push("Back".to_owned());
         let idx = Select::new()
             .with_prompt("Challenge")
@@ -367,16 +311,11 @@ async fn challenge_actions(config: &mut ClientConfig, challenge_id: String) -> C
                 "Back",
             ],
         )?;
-        let args = || ChallengeArgs {
-            challenge: challenge_id.clone(),
-            game: None,
-        };
+        let args = || ChallengeArgs { challenge: challenge_id.clone(), game: None };
         match choice {
             0 => {
-                with_client(config, |c, cfg| {
-                    Box::pin(challenge::view(c, cfg, args(), false, None))
-                })
-                .await?
+                with_client(config, |c, cfg| Box::pin(challenge::view(c, cfg, args(), false, None)))
+                    .await?
             }
             1 => {
                 let flag = input("Flag")?;
@@ -402,10 +341,8 @@ async fn challenge_actions(config: &mut ClientConfig, challenge_id: String) -> C
                 .await?
             }
             3 => {
-                let id: i64 = Input::new()
-                    .with_prompt("Hint ID")
-                    .interact_text()
-                    .map_err(dialoguer_error)?;
+                let id: i64 =
+                    Input::new().with_prompt("Hint ID").interact_text().map_err(dialoguer_error)?;
                 with_client(config, |c, cfg| {
                     Box::pin(challenge::unlock_hint(
                         c,
@@ -428,10 +365,8 @@ async fn challenge_actions(config: &mut ClientConfig, challenge_id: String) -> C
                 .await?
             }
             5 => {
-                with_client(config, |c, cfg| {
-                    Box::pin(challenge::stop(c, cfg, args(), false, None))
-                })
-                .await?
+                with_client(config, |c, cfg| Box::pin(challenge::stop(c, cfg, args(), false, None)))
+                    .await?
             }
             6 => {
                 with_client(config, |c, cfg| {
@@ -447,26 +382,16 @@ async fn challenge_actions(config: &mut ClientConfig, challenge_id: String) -> C
 
 async fn interactive_download(config: &mut ClientConfig, challenge_id: String) -> CliResult<()> {
     let game_id = current_game_id(config)?;
-    let parsed_challenge_id = challenge_id
-        .parse()
-        .map_err(|_| CliError::Config("invalid challenge ID".to_owned()))?;
+    let parsed_challenge_id =
+        challenge_id.parse().map_err(|_| CliError::Config("invalid challenge ID".to_owned()))?;
     let files = with_client_value(config, move |c, cfg| {
-        Box::pin(challenge::fetch_files(
-            c,
-            cfg,
-            None,
-            game_id,
-            parsed_challenge_id,
-        ))
+        Box::pin(challenge::fetch_files(c, cfg, None, game_id, parsed_challenge_id))
     })
     .await?;
     if files.is_empty() {
         return Err(CliError::Config("no attachments available".to_owned()));
     }
-    let labels: Vec<_> = files
-        .iter()
-        .map(|f| format!("{} / {}", f.folder, f.file))
-        .collect();
+    let labels: Vec<_> = files.iter().map(|f| format!("{} / {}", f.folder, f.file)).collect();
     let chosen = MultiSelect::new()
         .with_prompt("Download attachments")
         .items(&labels)
@@ -497,15 +422,7 @@ async fn team_menu(config: &mut ClientConfig) -> CliResult<()> {
     loop {
         match select(
             "Teams",
-            &[
-                "My team",
-                "List teams",
-                "Show team",
-                "Create",
-                "Join",
-                "Leave",
-                "Back",
-            ],
+            &["My team", "List teams", "Show team", "Create", "Join", "Leave", "Back"],
         )? {
             0 => {
                 with_client(config, |c, cfg| {
@@ -525,10 +442,7 @@ async fn team_menu(config: &mut ClientConfig) -> CliResult<()> {
                     Box::pin(team::team(
                         c,
                         cfg,
-                        TeamShowArgs {
-                            team: name,
-                            game: None,
-                        },
+                        TeamShowArgs { team: name, game: None },
                         false,
                         None,
                     ))
@@ -563,10 +477,7 @@ async fn team_menu(config: &mut ClientConfig) -> CliResult<()> {
                     Box::pin(team::team_join(
                         c,
                         cfg,
-                        TeamJoinArgs {
-                            token: Some(token),
-                            game: None,
-                        },
+                        TeamJoinArgs { token: Some(token), game: None },
                         false,
                         None,
                     ))
@@ -584,10 +495,7 @@ async fn team_menu(config: &mut ClientConfig) -> CliResult<()> {
                         Box::pin(team::team_leave(
                             c,
                             cfg,
-                            TeamLeaveArgs {
-                                game: None,
-                                yes: true,
-                            },
+                            TeamLeaveArgs { game: None, yes: true },
                             false,
                             None,
                         ))
@@ -612,17 +520,10 @@ fn current_game_id(config: &ClientConfig) -> CliResult<i64> {
         })
 }
 fn select(prompt: &str, items: &[&str]) -> CliResult<usize> {
-    Select::new()
-        .with_prompt(prompt)
-        .items(items)
-        .interact()
-        .map_err(dialoguer_error)
+    Select::new().with_prompt(prompt).items(items).interact().map_err(dialoguer_error)
 }
 fn input(prompt: &str) -> CliResult<String> {
-    Input::new()
-        .with_prompt(prompt)
-        .interact_text()
-        .map_err(dialoguer_error)
+    Input::new().with_prompt(prompt).interact_text().map_err(dialoguer_error)
 }
 fn dialoguer_error(error: dialoguer::Error) -> CliError {
     CliError::Io(std::io::Error::other(error))

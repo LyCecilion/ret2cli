@@ -43,21 +43,11 @@ pub async fn submissions(
             time: DateTime::<Utc>::from_timestamp(s.created_at, 0)
                 .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_else(|| s.created_at.to_string()),
-            challenge: s
-                .challenge_name
-                .unwrap_or_else(|| s.challenge_id.to_string()),
-            result: s.result.unwrap_or_else(|| {
-                if s.solved == Some(true) {
-                    "Solved"
-                } else {
-                    "—"
-                }
-                .to_owned()
-            }),
-            score: s
-                .score
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "—".to_owned()),
+            challenge: s.challenge_name.unwrap_or_else(|| s.challenge_id.to_string()),
+            result: s
+                .result
+                .unwrap_or_else(|| if s.solved == Some(true) { "Solved" } else { "—" }.to_owned()),
+            score: s.score.map(|v| v.to_string()).unwrap_or_else(|| "—".to_owned()),
         })
         .collect();
     output::print_table(&rows);

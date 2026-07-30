@@ -26,21 +26,14 @@ impl Client {
         if base_url.is_empty() {
             return Err(CliError::Config("base URL cannot be empty".to_owned()));
         }
-        Ok(Self {
-            base_url,
-            token,
-            http: HttpClient::new(),
-        })
+        Ok(Self { base_url, token, http: HttpClient::new() })
     }
 
     /// Build a full API URL: {base_url}/api/{path}
     fn url(&self, path: &str, query: &[(&str, &str)]) -> CliResult<Url> {
-        let mut url = Url::parse(&format!(
-            "{}/api/{}",
-            self.base_url,
-            path.trim_start_matches('/')
-        ))
-        .map_err(|e| CliError::Config(format!("invalid URL: {e}")))?;
+        let mut url =
+            Url::parse(&format!("{}/api/{}", self.base_url, path.trim_start_matches('/')))
+                .map_err(|e| CliError::Config(format!("invalid URL: {e}")))?;
         if !query.is_empty() {
             url.query_pairs_mut().extend_pairs(query.iter().copied());
         }
@@ -65,19 +58,13 @@ impl Client {
         path: &str,
         query: &[(&str, &str)],
     ) -> CliResult<reqwest::RequestBuilder> {
-        Ok(self
-            .http
-            .request(method, self.url(path, query)?)
-            .headers(self.auth_headers()?))
+        Ok(self.http.request(method, self.url(path, query)?).headers(self.auth_headers()?))
     }
 
     async fn check_response(&self, response: Response) -> CliResult<(Response, Option<String>)> {
         // Extract Set-Token header before consuming the response
-        let new_token = response
-            .headers()
-            .get("Set-Token")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned);
+        let new_token =
+            response.headers().get("Set-Token").and_then(|v| v.to_str().ok()).map(str::to_owned);
 
         if response.status().is_success() {
             return Ok((response, new_token));
@@ -90,13 +77,7 @@ impl Client {
             .ok()
             .and_then(|v| v.get("error").cloned())
             .and_then(|v| v.as_str().map(str::to_owned))
-            .unwrap_or_else(|| {
-                if text.is_empty() {
-                    status.to_string()
-                } else {
-                    text
-                }
-            });
+            .unwrap_or_else(|| if text.is_empty() { status.to_string() } else { text });
 
         Err(CliError::Api { status, message })
     }
@@ -179,11 +160,7 @@ impl Client {
         config: &mut ClientConfig,
         profile_name: Option<&str>,
     ) -> CliResult<T> {
-        let response = self
-            .request(Method::POST, path, &[])?
-            .json(body)
-            .send()
-            .await?;
+        let response = self.request(Method::POST, path, &[])?.json(body).send().await?;
         let (value, new_token) = self.typed_response::<T>(response).await?;
         self.handle_token(new_token, config, profile_name)?;
         Ok(value)
@@ -196,11 +173,7 @@ impl Client {
         config: &mut ClientConfig,
         profile_name: Option<&str>,
     ) -> CliResult<Value> {
-        let response = self
-            .request(Method::POST, path, &[])?
-            .json(body)
-            .send()
-            .await?;
+        let response = self.request(Method::POST, path, &[])?.json(body).send().await?;
         let (value, new_token) = self.json_response(response).await?;
         self.handle_token(new_token, config, profile_name)?;
         Ok(value)
@@ -214,11 +187,7 @@ impl Client {
         config: &mut ClientConfig,
         profile_name: Option<&str>,
     ) -> CliResult<Option<String>> {
-        let response = self
-            .request(Method::POST, path, &[])?
-            .json(body)
-            .send()
-            .await?;
+        let response = self.request(Method::POST, path, &[])?.json(body).send().await?;
         let (_, new_token) = self.check_response(response).await?;
         self.handle_token(new_token.clone(), config, profile_name)?;
         Ok(new_token)
@@ -231,11 +200,7 @@ impl Client {
         config: &mut ClientConfig,
         profile_name: Option<&str>,
     ) -> CliResult<T> {
-        let response = self
-            .request(Method::PATCH, path, &[])?
-            .json(body)
-            .send()
-            .await?;
+        let response = self.request(Method::PATCH, path, &[])?.json(body).send().await?;
         let (value, new_token) = self.typed_response::<T>(response).await?;
         self.handle_token(new_token, config, profile_name)?;
         Ok(value)

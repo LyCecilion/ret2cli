@@ -28,9 +28,7 @@ pub async fn run(cli: Cli) -> CliResult<()> {
     match cli.command {
         None => {
             if !std::io::stdin().is_terminal() || json {
-                return Err(CliError::Config(
-                    "no command specified; use --help".to_owned(),
-                ));
+                return Err(CliError::Config("no command specified; use --help".to_owned()));
             }
             return commands::interactive::run(&mut config, profile_name).await;
         }
@@ -74,12 +72,10 @@ async fn dispatch_network(
     json: bool,
 ) -> CliResult<()> {
     let profile = config.active_profile_resolved(profile_name)?;
-    let base_url = url_override
-        .or_else(|| env::var("R2S_URL").ok())
-        .unwrap_or_else(|| profile.url.clone());
-    let token = token_override
-        .or_else(|| env::var("R2S_TOKEN").ok())
-        .or_else(|| profile.token.clone());
+    let base_url =
+        url_override.or_else(|| env::var("R2S_URL").ok()).unwrap_or_else(|| profile.url.clone());
+    let token =
+        token_override.or_else(|| env::var("R2S_TOKEN").ok()).or_else(|| profile.token.clone());
     let mut client = Client::new(base_url, token)?;
     match command {
         Commands::Account { command } => match command {
@@ -163,9 +159,9 @@ async fn dispatch_network(
                 commands::team::team_leave(&mut client, config, args, json, profile_name).await
             }
         },
-        Commands::Submission {
-            command: SubmissionCommand::List(args),
-        } => commands::submission::submissions(&mut client, config, args, json, profile_name).await,
+        Commands::Submission { command: SubmissionCommand::List(args) } => {
+            commands::submission::submissions(&mut client, config, args, json, profile_name).await
+        }
         Commands::Profile { .. } | Commands::Interactive | Commands::Completion(_) => {
             unreachable!()
         }
@@ -193,9 +189,8 @@ async fn resolve_game_id(
         id: i64,
         name: String,
     }
-    let (items, _): (Vec<Item>, u64) = client
-        .get("game", &[("page_size", "100")], config, profile_name)
-        .await?;
+    let (items, _): (Vec<Item>, u64) =
+        client.get("game", &[("page_size", "100")], config, profile_name).await?;
     let lowered = value.to_lowercase();
     let matches: Vec<_> = items
         .into_iter()
@@ -206,9 +201,7 @@ async fn resolve_game_id(
     if matches.len() == 1 {
         Ok(Some(matches[0].id))
     } else {
-        Err(CliError::Config(format!(
-            "game '{value}' is missing or ambiguous"
-        )))
+        Err(CliError::Config(format!("game '{value}' is missing or ambiguous")))
     }
 }
 
@@ -239,9 +232,7 @@ async fn resolve_challenge_id(
     if matches.len() == 1 {
         Ok(matches[0].id)
     } else {
-        Err(CliError::Config(format!(
-            "challenge '{challenge}' is missing or ambiguous"
-        )))
+        Err(CliError::Config(format!("challenge '{challenge}' is missing or ambiguous")))
     }
 }
 
@@ -258,9 +249,7 @@ mod tests {
             Cli::try_parse_from(["ret2cli", "challenge", "submit", "pwn", "--flag", "x"]).unwrap();
         assert!(matches!(
             cli.command,
-            Some(Commands::Challenge {
-                command: ChallengeCommand::Submit(_)
-            })
+            Some(Commands::Challenge { command: ChallengeCommand::Submit(_) })
         ));
     }
     #[test]

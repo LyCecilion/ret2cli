@@ -37,9 +37,8 @@ pub async fn login(
     *client = Client::new(client.base_url.clone(), None)?;
     config.active_profile_mut(profile_name)?.url = client.base_url.clone();
 
-    let captcha: CaptchaResponse = client
-        .get("account/captcha/cli", &[], config, profile_name)
-        .await?;
+    let captcha: CaptchaResponse =
+        client.get("account/captcha/cli", &[], config, profile_name).await?;
     let request = LoginRequest {
         account,
         password,
@@ -54,13 +53,8 @@ pub async fn login(
             message: "server did not return Set-Token".to_owned(),
         })?;
     config.save()?;
-    let profile = client
-        .get_value("account/profile", &[], config, profile_name)
-        .await?;
-    let nickname = profile
-        .get("nickname")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+    let profile = client.get_value("account/profile", &[], config, profile_name).await?;
+    let nickname = profile.get("nickname").and_then(|v| v.as_str()).unwrap_or("unknown");
     if json {
         output::print_json(&serde_json::json!({ "nickname": nickname, "logged_in": true }));
     } else {
@@ -77,14 +71,7 @@ pub async fn logout(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    client
-        .post_value(
-            "account/logout",
-            &serde_json::json!({}),
-            config,
-            profile_name,
-        )
-        .await?;
+    client.post_value("account/logout", &serde_json::json!({}), config, profile_name).await?;
     config.active_profile_mut(profile_name)?.token = None;
     config.save()?;
     if json {
@@ -109,13 +96,8 @@ pub async fn status(
         }
         return Ok(());
     }
-    let profile = client
-        .get_value("account/profile", &[], config, profile_name)
-        .await?;
-    let nickname = profile
-        .get("nickname")
-        .and_then(|v| v.as_str())
-        .unwrap_or("—");
+    let profile = client.get_value("account/profile", &[], config, profile_name).await?;
+    let nickname = profile.get("nickname").and_then(|v| v.as_str()).unwrap_or("—");
     if json {
         output::print_json(&serde_json::json!({
             "logged_in": true, "url": client.base_url, "nickname": nickname,
@@ -143,9 +125,8 @@ pub async fn register(
     let password = require_or_password(args.password, "Password", json)?;
     *client = Client::new(client.base_url.clone(), None)?;
     config.active_profile_mut(profile_name)?.url = client.base_url.clone();
-    let captcha: CaptchaResponse = client
-        .get("account/captcha/cli", &[], config, profile_name)
-        .await?;
+    let captcha: CaptchaResponse =
+        client.get("account/captcha/cli", &[], config, profile_name).await?;
     let result = client
         .post_value(
             "account/register",
@@ -172,9 +153,7 @@ pub async fn show(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let value = client
-        .get_value("account/profile", &[], config, profile_name)
-        .await?;
+    let value = client.get_value("account/profile", &[], config, profile_name).await?;
     if json {
         output::print_json(&value);
         return Ok(());
@@ -194,21 +173,9 @@ pub async fn show(
         .map(|v| v.to_string())
         .unwrap_or_else(|| "—".to_owned());
     output::print_key_value(&[
-        (
-            "Account",
-            value.get("account").and_then(|v| v.as_str()).unwrap_or("—"),
-        ),
-        (
-            "Nickname",
-            value
-                .get("nickname")
-                .and_then(|v| v.as_str())
-                .unwrap_or("—"),
-        ),
-        (
-            "Email",
-            value.get("email").and_then(|v| v.as_str()).unwrap_or("—"),
-        ),
+        ("Account", value.get("account").and_then(|v| v.as_str()).unwrap_or("—")),
+        ("Nickname", value.get("nickname").and_then(|v| v.as_str()).unwrap_or("—")),
+        ("Email", value.get("email").and_then(|v| v.as_str()).unwrap_or("—")),
         ("Institute ID", &institute),
         ("Registered", &registered),
     ]);
@@ -218,10 +185,7 @@ pub async fn show(
 fn solve_pow(challenge: &str) -> String {
     use ring::digest::{SHA256, digest};
     let mut parts = challenge.splitn(2, '#');
-    let difficulty = parts
-        .next()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(4);
+    let difficulty = parts.next().and_then(|s| s.parse::<usize>().ok()).unwrap_or(4);
     let seed = parts.next().unwrap_or("");
     let prefix = "0".repeat(difficulty);
     for nonce in 0u64.. {
