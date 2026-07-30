@@ -122,9 +122,6 @@ pub async fn status(
     let profile = client.get_value("account/profile", &[], config, profile_name).await?;
     let nickname = profile.get("nickname").and_then(|v| v.as_str()).unwrap_or("—");
     let account = profile.get("account").and_then(|v| v.as_str()).unwrap_or("—");
-    if client.persists_token() {
-        reconcile_legacy_account(config, profile_name, account)?;
-    }
     if json {
         output::print_json(&serde_json::json!({
             "logged_in": true, "url": client.base_url, "account": account, "nickname": nickname,
@@ -280,11 +277,6 @@ pub async fn show(
     profile_name: Option<&str>,
 ) -> CliResult<()> {
     let value = client.get_value("account/profile", &[], config, profile_name).await?;
-    if client.persists_token()
-        && let Some(account) = value.get("account").and_then(|v| v.as_str())
-    {
-        reconcile_legacy_account(config, profile_name, account)?;
-    }
     if json {
         output::print_json(&value);
         return Ok(());
@@ -308,26 +300,6 @@ pub async fn show(
         ("Registered", &registered),
     ]);
     Ok(())
-}
-
-fn reconcile_legacy_account(
-    config: &mut ClientConfig,
-    profile_name: Option<&str>,
-    canonical_account: &str,
-) -> CliResult<()> {
-    let profile = config.active_profile_mut(profile_name)?;
-    let Some(active_account) = profile.active_account.clone() else {
-        return Ok(());
-    };
-    if !active_account.starts_with("legacy") || active_account == canonical_account {
-        return Ok(());
-    }
-    let Some(session) = profile.accounts.remove(&active_account) else {
-        return Ok(());
-    };
-    profile.accounts.insert(canonical_account.to_owned(), session);
-    profile.active_account = Some(canonical_account.to_owned());
-    config.save()
 }
 
 fn solve_pow(challenge: &str) -> String {

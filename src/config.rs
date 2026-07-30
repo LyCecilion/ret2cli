@@ -10,12 +10,6 @@ pub struct ClientConfig {
     pub active_profile: String,
     #[serde(default)]
     pub profiles: HashMap<String, ConnectionProfile>,
-
-    // Legacy v0.1 fields. They are consumed on load and never written again.
-    #[serde(default, skip_serializing)]
-    default: Option<ConnectionProfile>,
-    #[serde(default, skip_serializing)]
-    default_game: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -27,10 +21,6 @@ pub struct ConnectionProfile {
     pub accounts: HashMap<String, AccountSession>,
     #[serde(default)]
     pub game: Option<String>,
-
-    // Legacy v0.1/v0.2 field. It is moved into accounts on load.
-    #[serde(default, skip_serializing)]
-    token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,20 +52,6 @@ impl ConnectionProfile {
         self.accounts.remove(&account);
         Some(account)
     }
-
-    fn migrate_token(&mut self) -> bool {
-        let Some(token) = self.token.take() else {
-            return false;
-        };
-        let mut name = "legacy".to_owned();
-        let mut suffix = 2;
-        while self.accounts.contains_key(&name) {
-            name = format!("legacy-{suffix}");
-            suffix += 1;
-        }
-        self.store_account(name, token);
-        true
-    }
 }
 
 fn default_profile_name() -> String {
@@ -86,7 +62,7 @@ impl Default for ClientConfig {
     fn default() -> Self {
         let mut profiles = HashMap::new();
         profiles.insert("default".to_owned(), ConnectionProfile::default());
-        Self { active_profile: default_profile_name(), profiles, default: None, default_game: None }
+        Self { active_profile: default_profile_name(), profiles }
     }
 }
 
@@ -103,16 +79,8 @@ impl ClientConfig {
         }
         let content = std::fs::read_to_string(&path)
             .map_err(|e| CliError::Config(format!("failed to read config: {e}")))?;
-        let mut config: Self = toml::from_str(&content)
-            .map_err(|e| CliError::Config(format!("failed to parse config: {e}")))?;
-        let migrated = config.migrate_legacy();
-        if migrated {
-            let backup = next_backup_path(&path);
-            std::fs::copy(&path, &backup)
-                .map_err(|e| CliError::Config(format!("failed to back up config: {e}")))?;
-            config.save()?;
-        }
-        Ok(config)
+        toml::from_str(&content)
+            .map_err(|e| CliError::Config(format!("failed to parse config: {e}")))
     }
 
     /// Write the current configuration to disk atomically.
@@ -135,25 +103,6 @@ impl ClientConfig {
         std::fs::rename(&temp, &path)
             .map_err(|e| CliError::Config(format!("failed to replace config: {e}")))?;
         Ok(())
-    }
-
-    fn migrate_legacy(&mut self) -> bool {
-        let mut migrated = false;
-        if let Some(mut legacy_default) = self.default.take() {
-            if legacy_default.game.is_none() {
-                legacy_default.game = self.default_game.take();
-            }
-            self.profiles.entry("default".to_owned()).or_insert(legacy_default);
-            self.active_profile = default_profile_name();
-            migrated = true;
-        } else if self.profiles.is_empty() {
-            self.profiles.insert("default".to_owned(), ConnectionProfile::default());
-            migrated = true;
-        }
-        for profile in self.profiles.values_mut() {
-            migrated |= profile.migrate_token();
-        }
-        migrated
     }
 
     /// Resolve the active profile name from CLI arg, env var, or config default.
@@ -206,56 +155,10 @@ fn config_path() -> CliResult<PathBuf> {
     Ok(dir.join("ret2cli").join("config.toml"))
 }
 
-fn next_backup_path(path: &std::path::Path) -> PathBuf {
-    let first = path.with_extension("toml.bak");
-    if !first.exists() {
-        return first;
-    }
-    for suffix in 2u32.. {
-        let candidate = path.with_extension(format!("toml.bak.{suffix}"));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    unreachable!()
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn migrates_legacy_default_and_game_without_losing_profiles() {
-        let input = r#"
-default_game = "11"
-
-[default]
-url = "https://default.example/"
-token = "default-token"
-
-[profiles.school]
-url = "https://school.example/"
-token = "school-token"
-"#;
-        let mut config: ClientConfig = toml::from_str(input).unwrap();
-        assert!(config.migrate_legacy());
-        assert_eq!(config.active_profile, "default");
-        assert_eq!(config.profiles["default"].game.as_deref(), Some("11"));
-        assert_eq!(config.profiles["default"].active_account.as_deref(), Some("legacy"));
-        assert_eq!(config.profiles["default"].active_token(), Some("default-token"));
-        assert_eq!(config.profiles["school"].active_token(), Some("school-token"));
-        let serialized = toml::to_string(&config).unwrap();
-        assert!(!serialized.contains("default_game"));
-        assert!(!serialized.contains("[default]"));
-        assert!(serialized.contains("[profiles.default.accounts.legacy]"));
-        let migrated: toml::Value = toml::from_str(&serialized).unwrap();
-        assert!(migrated["profiles"]["default"].get("token").is_none());
-        assert_eq!(
-            migrated["profiles"]["default"]["accounts"]["legacy"]["token"].as_str(),
-            Some("default-token")
-        );
-    }
 
     #[test]
     fn unknown_profile_is_an_error() {

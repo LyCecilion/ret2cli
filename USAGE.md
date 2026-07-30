@@ -187,7 +187,7 @@ source <(ret2cli completion zsh)
 ret2cli completion fish | source
 ```
 
-## 配置与旧版本迁移
+## 配置
 
 配置位于 `~/.config/ret2cli/config.toml`：
 
@@ -205,5 +205,3 @@ token = "<redacted>"
 [profiles.default.accounts.lycecilion-alt]
 token = "<redacted>"
 ```
-
-首次读取旧配置时，客户端会自动迁移 `[default]`、`[profiles.*]`、`default_game` 和 profile 下的单个 `token`。迁移前会保留一份 `config.toml.bak`；若已有旧备份则追加编号，已有 URL、token 和比赛选择不会丢失。旧 token 暂存为当前 profile 的 `legacy` 账号会话，下一次成功执行 `account status` 或 `account show` 后会自动改为服务端返回的真实账号名。
