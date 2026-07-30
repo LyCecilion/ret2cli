@@ -21,7 +21,7 @@ ret2cli
 ret2cli interactive
 ```
 
-首次启动会询问 Ret2Shell 地址。登录后可从菜单完成 profile 切换、比赛选择、查看题目、提交 flag、Hint、实例、附件、队伍和提交记录等操作。
+首次启动会询问 Ret2Shell 地址。登录后可从菜单完成 profile 与账号切换、比赛选择、查看题目、提交 flag、Hint、实例、附件、队伍和提交记录等操作。
 
 裸跑只在 TTY 中进入交互界面；管道或脚本中未指定子命令会直接失败，不会等待输入。
 
@@ -49,19 +49,25 @@ ret2cli challenge submit phptrick --flag 'flag{...}'
 
 ```bash
 ret2cli account login --url https://ctf.example/ --account alice
+ret2cli account login --account alice-alt
+ret2cli account list
+ret2cli account use alice
 ret2cli account status
 ret2cli account show
 ret2cli account logout
+ret2cli account remove alice-alt --yes
 
 ret2cli account register --url https://ctf.example/ \
   --account alice --nickname Alice --email alice@example.com
 ```
 
+同一个 connection profile 可以保存多个账号会话；每次登录都会保存并切换到该账号，`account use` 切换时不需要重新输入密码。`account logout` 会通知服务器并删除当前账号的本地会话，其他已保存账号不受影响；token 已失效、无法正常登出时可用 `account remove` 仅清理本地会话。
+
 `account status` 会实际请求服务器验证 token。无效或过期的 token 不会被报告为“已登录”。
 
 ### 本地 profile
 
-每个 profile 独立保存服务器 URL、token 和当前比赛：
+每个 profile 表示一个命名的 Ret2Shell 连接上下文，独立保存服务器 URL、多个账号会话和当前比赛：
 
 ```bash
 ret2cli profile list
@@ -78,7 +84,7 @@ ret2cli --profile school game list
 ret2cli --url https://temporary.example/ --token "$TOKEN" game list
 ```
 
-未知 profile 会立即报错，不会静默退回 default。
+未知 profile 会立即报错，不会静默退回 default。只覆盖 URL 时不会携带当前 profile 的 token，避免把一个 Ret2Shell 实例的凭据发送给另一个实例；临时认证必须同时显式提供 `--token`。
 
 ### 比赛
 
@@ -190,8 +196,14 @@ active_profile = "default"
 
 [profiles.default]
 url = "https://ctf.xidian.edu.cn/"
-token = "<redacted>"
+active_account = "lycecilion"
 game = "11"
+
+[profiles.default.accounts.lycecilion]
+token = "<redacted>"
+
+[profiles.default.accounts.lycecilion-alt]
+token = "<redacted>"
 ```
 
-首次读取 v0.1 配置时，客户端会自动迁移旧的 `[default]`、`[profiles.*]` 和 `default_game`。迁移前会保留一份 `config.toml.bak`，已有 URL、token 和比赛选择不会丢失。
+首次读取旧配置时，客户端会自动迁移 `[default]`、`[profiles.*]`、`default_game` 和 profile 下的单个 `token`。迁移前会保留一份 `config.toml.bak`；若已有旧备份则追加编号，已有 URL、token 和比赛选择不会丢失。旧 token 暂存为当前 profile 的 `legacy` 账号会话，下一次成功执行 `account status` 或 `account show` 后会自动改为服务端返回的真实账号名。

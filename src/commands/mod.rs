@@ -11,7 +11,7 @@ use dialoguer::{Confirm, Input, Password};
 
 use crate::{
     cli::{CompletionArgs, ProfileAddArgs, ProfileRemoveArgs},
-    config::{ClientConfig, Profile},
+    config::{ClientConfig, ConnectionProfile},
     error::{CliError, CliResult},
     output,
 };
@@ -68,7 +68,9 @@ pub fn profile_list(config: &ClientConfig, json: bool) {
                     "active": name == &config.active_profile,
                     "url": config.profiles[name].url,
                     "game": config.profiles[name].game,
-                    "logged_in": config.profiles[name].token.is_some(),
+                    "active_account": config.profiles[name].active_account,
+                    "saved_accounts": config.profiles[name].accounts.len(),
+                    "logged_in": config.profiles[name].active_token().is_some(),
                 })
             })
             .collect();
@@ -76,7 +78,8 @@ pub fn profile_list(config: &ClientConfig, json: bool) {
     } else {
         for name in names {
             let marker = if name == &config.active_profile { "*" } else { " " };
-            println!("{marker} {name:<16} {}", config.profiles[name].url);
+            let account = config.profiles[name].active_account.as_deref().unwrap_or("anonymous");
+            println!("{marker} {name:<16} {:<24} {account}", config.profiles[name].url);
         }
     }
 }
@@ -91,14 +94,18 @@ pub fn profile_show(config: &ClientConfig, name: Option<&str>, json: bool) -> Cl
         output::print_json(&serde_json::json!({
             "name": name, "active": name == config.active_profile,
             "url": profile.url, "game": profile.game,
-            "logged_in": profile.token.is_some(),
+            "active_account": profile.active_account,
+            "saved_accounts": profile.accounts.len(),
+            "logged_in": profile.active_token().is_some(),
         }));
     } else {
         output::print_key_value(&[
             ("Name", name),
             ("URL", &profile.url),
+            ("Account", profile.active_account.as_deref().unwrap_or("—")),
+            ("Saved accounts", &profile.accounts.len().to_string()),
             ("Game", profile.game.as_deref().unwrap_or("—")),
-            ("Status", if profile.token.is_some() { "Token stored" } else { "No token" }),
+            ("Status", if profile.active_token().is_some() { "Token stored" } else { "No token" }),
         ]);
     }
     Ok(())
@@ -109,9 +116,7 @@ pub fn profile_add(config: &mut ClientConfig, args: ProfileAddArgs, json: bool) 
         return Err(CliError::Config(format!("profile '{}' already exists", args.name)));
     }
     reqwest::Url::parse(&args.url).map_err(|e| CliError::Config(format!("invalid URL: {e}")))?;
-    config
-        .profiles
-        .insert(args.name.clone(), Profile { url: args.url.clone(), token: None, game: None });
+    config.profiles.insert(args.name.clone(), ConnectionProfile::new(args.url.clone()));
     if args.use_now {
         config.active_profile = args.name.clone();
     }

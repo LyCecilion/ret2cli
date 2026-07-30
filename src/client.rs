@@ -17,6 +17,7 @@ use crate::{
 pub struct Client {
     pub base_url: String,
     pub token: Option<String>,
+    persist_token: bool,
     http: HttpClient,
 }
 
@@ -26,7 +27,16 @@ impl Client {
         if base_url.is_empty() {
             return Err(CliError::Config("base URL cannot be empty".to_owned()));
         }
-        Ok(Self { base_url, token, http: HttpClient::new() })
+        Ok(Self { base_url, token, persist_token: true, http: HttpClient::new() })
+    }
+
+    pub fn set_token_persistence(&mut self, persist: bool) {
+        self.persist_token = persist;
+    }
+
+    #[must_use]
+    pub fn persists_token(&self) -> bool {
+        self.persist_token
     }
 
     /// Build a full API URL: {base_url}/api/{path}
@@ -116,10 +126,15 @@ impl Client {
         if let Some(ref new) = new_token {
             if self.token.as_deref() != Some(new) {
                 self.token = Some(new.clone());
-                // Persist to config
-                let profile = config.active_profile_mut(profile_name)?;
-                profile.token = Some(new.clone());
-                config.save()?;
+                if self.persist_token {
+                    let profile = config.active_profile_mut(profile_name)?;
+                    if let Some(account) = profile.active_account.clone()
+                        && let Some(session) = profile.accounts.get_mut(&account)
+                    {
+                        session.token.clone_from(new);
+                        config.save()?;
+                    }
+                }
             }
         }
         Ok(())

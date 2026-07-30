@@ -2,8 +2,9 @@ use dialoguer::{Confirm, Input, MultiSelect, Password, Select};
 
 use crate::{
     cli::{
-        ChallengeArgs, DownloadArgs, GameContextArgs, LoginArgs, ProfileAddArgs, RegisterArgs,
-        SubmitArgs, TeamCreateArgs, TeamJoinArgs, TeamLeaveArgs, TeamShowArgs, UnlockHintArgs,
+        AccountRemoveArgs, ChallengeArgs, DownloadArgs, GameContextArgs, LoginArgs, ProfileAddArgs,
+        RegisterArgs, SubmitArgs, TeamCreateArgs, TeamJoinArgs, TeamLeaveArgs, TeamShowArgs,
+        UnlockHintArgs,
     },
     client::Client,
     commands::{self, challenge, game, submission, team},
@@ -20,56 +21,13 @@ pub async fn run(config: &mut ClientConfig, requested_profile: Option<&str>) -> 
         config.save()?;
     }
     ensure_url(config)?;
-    if config.active_profile_resolved(None)?.token.is_none() {
-        match select(
-            "This profile is not logged in",
-            &["Login", "Register", "Continue without login"],
-        )? {
-            0 => {
-                let account = input("Account")?;
-                let password =
-                    Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
-                with_client(config, |c, cfg| {
-                    Box::pin(commands::auth::login(
-                        c,
-                        cfg,
-                        LoginArgs { account: Some(account), password: Some(password) },
-                        false,
-                        None,
-                    ))
-                })
-                .await?;
-            }
-            1 => {
-                let account = input("Account")?;
-                let nickname = input("Nickname")?;
-                let email = input("Email")?;
-                let password =
-                    Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
-                with_client(config, |c, cfg| {
-                    Box::pin(commands::auth::register(
-                        c,
-                        cfg,
-                        RegisterArgs {
-                            account: Some(account),
-                            nickname: Some(nickname),
-                            email: Some(email),
-                            password: Some(password),
-                        },
-                        false,
-                        None,
-                    ))
-                })
-                .await?;
-            }
-            _ => {}
-        }
-    }
+    ensure_active_account(config).await?;
     loop {
         let profile = config.active_profile_resolved(None)?;
         println!(
-            "\nret2cli  profile={}  game={}",
+            "\nret2cli  profile={}  account={}  game={}",
             config.active_profile,
+            profile.active_account.as_deref().unwrap_or("anonymous"),
             profile.game.as_deref().unwrap_or("none")
         );
         let choice = select(
@@ -134,63 +92,134 @@ fn ensure_url(config: &mut ClientConfig) -> CliResult<()> {
     config.save()
 }
 
+async fn ensure_active_account(config: &mut ClientConfig) -> CliResult<()> {
+    if config.active_profile_resolved(None)?.active_token().is_some() {
+        return Ok(());
+    }
+    let has_saved_accounts = !config.active_profile_resolved(None)?.accounts.is_empty();
+    let choices = if has_saved_accounts {
+        vec!["Switch saved account", "Login", "Register", "Continue without login"]
+    } else {
+        vec!["Login", "Register", "Continue without login"]
+    };
+    let mut choice = select("This profile has no active account", &choices)?;
+    if has_saved_accounts && choice == 0 {
+        return select_saved_account(config);
+    }
+    if has_saved_accounts {
+        choice -= 1;
+    }
+    match choice {
+        0 => prompt_login(config).await,
+        1 => prompt_register(config).await,
+        _ => Ok(()),
+    }
+}
+
+async fn prompt_login(config: &mut ClientConfig) -> CliResult<()> {
+    let account = input("Account")?;
+    let password = Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
+    with_client(config, |client, config| {
+        Box::pin(commands::auth::login(
+            client,
+            config,
+            LoginArgs { account: Some(account), password: Some(password) },
+            false,
+            None,
+        ))
+    })
+    .await
+}
+
+async fn prompt_register(config: &mut ClientConfig) -> CliResult<()> {
+    let account = input("Account")?;
+    let nickname = input("Nickname")?;
+    let email = input("Email")?;
+    let password = Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
+    with_client(config, |client, config| {
+        Box::pin(commands::auth::register(
+            client,
+            config,
+            RegisterArgs {
+                account: Some(account),
+                nickname: Some(nickname),
+                email: Some(email),
+                password: Some(password),
+            },
+            false,
+            None,
+        ))
+    })
+    .await
+}
+
 async fn account_menu(config: &mut ClientConfig) -> CliResult<()> {
     loop {
-        match select("Account", &["Status", "Show account", "Login", "Register", "Logout", "Back"])?
-        {
-            0 => {
+        match select(
+            "Account",
+            &[
+                "List saved accounts",
+                "Switch account",
+                "Status",
+                "Show account",
+                "Login another account",
+                "Register",
+                "Logout current account",
+                "Remove saved account",
+                "Back",
+            ],
+        )? {
+            0 => commands::auth::list(config, None, false)?,
+            1 => select_saved_account(config)?,
+            2 => {
                 with_client(config, |c, cfg| Box::pin(commands::auth::status(c, cfg, false, None)))
                     .await?
             }
-            1 => {
+            3 => {
                 with_client(config, |c, cfg| Box::pin(commands::auth::show(c, cfg, false, None)))
                     .await?
             }
-            2 => {
-                let account: String =
-                    Input::new().with_prompt("Account").interact_text().map_err(dialoguer_error)?;
-                let password =
-                    Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
-                with_client(config, |c, cfg| {
-                    Box::pin(commands::auth::login(
-                        c,
-                        cfg,
-                        LoginArgs { account: Some(account), password: Some(password) },
-                        false,
-                        None,
-                    ))
-                })
-                .await?;
-            }
-            3 => {
-                let account = input("Account")?;
-                let nickname = input("Nickname")?;
-                let email = input("Email")?;
-                let password =
-                    Password::new().with_prompt("Password").interact().map_err(dialoguer_error)?;
-                with_client(config, |c, cfg| {
-                    Box::pin(commands::auth::register(
-                        c,
-                        cfg,
-                        RegisterArgs {
-                            account: Some(account),
-                            nickname: Some(nickname),
-                            email: Some(email),
-                            password: Some(password),
-                        },
-                        false,
-                        None,
-                    ))
-                })
-                .await?;
-            }
-            4 => {
+            4 => prompt_login(config).await?,
+            5 => prompt_register(config).await?,
+            6 => {
                 with_client(config, |c, cfg| Box::pin(commands::auth::logout(c, cfg, false, None)))
                     .await?
             }
+            7 => remove_saved_account(config)?,
             _ => return Ok(()),
         }
     }
+}
+
+fn select_saved_account(config: &mut ClientConfig) -> CliResult<()> {
+    let mut accounts: Vec<_> =
+        config.active_profile_resolved(None)?.accounts.keys().cloned().collect();
+    accounts.sort();
+    if accounts.is_empty() {
+        return Err(CliError::Config("no saved accounts in this profile".to_owned()));
+    }
+    let idx = Select::new()
+        .with_prompt("Use account")
+        .items(&accounts)
+        .interact()
+        .map_err(dialoguer_error)?;
+    commands::auth::use_account(config, None, &accounts[idx], false)
+}
+
+fn remove_saved_account(config: &mut ClientConfig) -> CliResult<()> {
+    let mut accounts: Vec<_> =
+        config.active_profile_resolved(None)?.accounts.keys().cloned().collect();
+    accounts.sort();
+    if accounts.is_empty() {
+        return Err(CliError::Config("no saved accounts in this profile".to_owned()));
+    }
+    let idx = Select::new()
+        .with_prompt("Remove account")
+        .items(&accounts)
+        .interact()
+        .map_err(dialoguer_error)?;
+    let args = AccountRemoveArgs { account: accounts[idx].clone(), yes: false };
+    commands::auth::remove(config, None, &args, false)
 }
 
 fn profile_menu(config: &mut ClientConfig) -> CliResult<()> {
@@ -530,7 +559,7 @@ fn dialoguer_error(error: dialoguer::Error) -> CliError {
 }
 fn make_client(config: &ClientConfig) -> CliResult<Client> {
     let p = config.active_profile_resolved(None)?;
-    Client::new(p.url.clone(), p.token.clone())
+    Client::new(p.url.clone(), p.active_token().map(str::to_owned))
 }
 
 async fn with_client<F>(config: &mut ClientConfig, f: F) -> CliResult<()>

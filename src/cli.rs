@@ -30,7 +30,7 @@ pub enum Commands {
         #[command(subcommand)]
         command: AccountCommand,
     },
-    /// Manage local Ret2Shell connection profiles
+    /// Manage local `Ret2Shell` connection profiles
     Profile {
         #[command(subcommand)]
         command: ProfileCommand,
@@ -63,11 +63,22 @@ pub enum Commands {
 
 #[derive(Subcommand, Debug)]
 pub enum AccountCommand {
+    /// List accounts saved in the selected connection profile
+    List,
+    /// Log in and save or replace an account session
     Login(LoginArgs),
+    /// Log out and remove the active account session
     Logout,
+    /// Register an account on the selected `Ret2Shell` instance
     Register(RegisterArgs),
+    /// Verify the active account session with the server
     Status,
+    /// Show the active account's server-side profile
     Show,
+    /// Switch the active account within the selected connection profile
+    Use { account: String },
+    /// Remove a saved account session without contacting the server
+    Remove(AccountRemoveArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -134,6 +145,15 @@ pub struct RegisterArgs {
     pub email: Option<String>,
     #[arg(long)]
     pub password: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct AccountRemoveArgs {
+    /// Saved account name
+    pub account: String,
+    /// Skip the confirmation prompt
+    #[arg(long)]
+    pub yes: bool,
 }
 
 #[derive(Args, Debug, Clone)]

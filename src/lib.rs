@@ -49,6 +49,15 @@ pub async fn run(cli: Cli) -> CliResult<()> {
             ProfileCommand::Use { name } => commands::profile_use(&mut config, &name, json),
             ProfileCommand::Remove(args) => commands::profile_remove(&mut config, args, json),
         },
+        Some(Commands::Account { command: AccountCommand::List }) => {
+            commands::auth::list(&config, profile_name, json)
+        }
+        Some(Commands::Account { command: AccountCommand::Use { account } }) => {
+            commands::auth::use_account(&mut config, profile_name, &account, json)
+        }
+        Some(Commands::Account { command: AccountCommand::Remove(args) }) => {
+            commands::auth::remove(&mut config, profile_name, &args, json)
+        }
         command => {
             dispatch_network(
                 command.expect("matched Some"),
@@ -71,14 +80,21 @@ async fn dispatch_network(
     profile_name: Option<&str>,
     json: bool,
 ) -> CliResult<()> {
-    let profile = config.active_profile_resolved(profile_name)?;
-    let base_url =
-        url_override.or_else(|| env::var("R2S_URL").ok()).unwrap_or_else(|| profile.url.clone());
-    let token =
-        token_override.or_else(|| env::var("R2S_TOKEN").ok()).or_else(|| profile.token.clone());
+    let (profile_url, profile_token) = {
+        let profile = config.active_profile_resolved(profile_name)?;
+        (profile.url.clone(), profile.active_token().map(str::to_owned))
+    };
+    let explicit_url = url_override.or_else(|| env::var("R2S_URL").ok());
+    let explicit_token = token_override.or_else(|| env::var("R2S_TOKEN").ok());
+    let (base_url, token, persist_token) =
+        resolve_connection(&profile_url, profile_token, explicit_url, explicit_token);
     let mut client = Client::new(base_url, token)?;
+    client.set_token_persistence(persist_token);
     match command {
         Commands::Account { command } => match command {
+            AccountCommand::List | AccountCommand::Use { .. } | AccountCommand::Remove(_) => {
+                unreachable!()
+            }
             AccountCommand::Login(args) => {
                 commands::auth::login(&mut client, config, args, json, profile_name).await
             }
@@ -168,6 +184,19 @@ async fn dispatch_network(
     }
 }
 
+fn resolve_connection(
+    profile_url: &str,
+    profile_token: Option<String>,
+    explicit_url: Option<String>,
+    explicit_token: Option<String>,
+) -> (String, Option<String>, bool) {
+    let base_url = explicit_url.unwrap_or_else(|| profile_url.to_owned());
+    let same_endpoint = base_url.trim_end_matches('/') == profile_url.trim_end_matches('/');
+    let persist_token = explicit_token.is_none() && same_endpoint;
+    let token = explicit_token.or_else(|| same_endpoint.then_some(profile_token).flatten());
+    (base_url, token, persist_token)
+}
+
 async fn resolve_game_id(
     client: &mut Client,
     config: &mut ClientConfig,
@@ -240,7 +269,7 @@ async fn resolve_challenge_id(
 mod tests {
     use crate::{
         Cli,
-        cli::{ChallengeCommand, Commands},
+        cli::{AccountCommand, ChallengeCommand, Commands},
     };
     use clap::Parser;
     #[test]
@@ -255,5 +284,46 @@ mod tests {
     #[test]
     fn accepts_no_command_for_interactive_mode() {
         assert!(Cli::try_parse_from(["ret2cli"]).unwrap().command.is_none());
+    }
+
+    #[test]
+    fn parses_account_switch_and_local_removal() {
+        let use_account = Cli::try_parse_from(["ret2cli", "account", "use", "alt"]).unwrap();
+        assert!(matches!(
+            use_account.command,
+            Some(Commands::Account { command: AccountCommand::Use { account } }) if account == "alt"
+        ));
+
+        let remove = Cli::try_parse_from(["ret2cli", "account", "remove", "alt", "--yes"]).unwrap();
+        assert!(matches!(
+            remove.command,
+            Some(Commands::Account { command: AccountCommand::Remove(args) })
+                if args.account == "alt" && args.yes
+        ));
+    }
+
+    #[test]
+    fn url_override_does_not_reuse_or_persist_profile_token() {
+        let (url, token, persist) = super::resolve_connection(
+            "https://one.example/",
+            Some("one-token".to_owned()),
+            Some("https://two.example/".to_owned()),
+            None,
+        );
+        assert_eq!(url, "https://two.example/");
+        assert_eq!(token, None);
+        assert!(!persist);
+    }
+
+    #[test]
+    fn same_profile_endpoint_uses_its_active_account_token() {
+        let (_, token, persist) = super::resolve_connection(
+            "https://one.example/",
+            Some("one-token".to_owned()),
+            Some("https://one.example".to_owned()),
+            None,
+        );
+        assert_eq!(token.as_deref(), Some("one-token"));
+        assert!(persist);
     }
 }
