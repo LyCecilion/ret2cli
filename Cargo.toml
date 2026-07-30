@@ -3,8 +3,13 @@ name = "ret2cli"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
+authors = ["LyCecilion <LyCecilion@outlook.com>"]
 description = "CLI client for Ret2Shell CTF platform"
 license = "MIT"
+repository = "https://github.com/LyCecilion/ret2cli"
+readme = "README.md"
+keywords = ["cli", "ret2shell", "ctf"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -26,3 +31,14 @@ dialoguer = "0.11"
 indicatif = "0.17"
 futures-util = "0.3"
 clap_complete = "4"
+
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+unwrap_used = "warn"
+expect_used = "warn"

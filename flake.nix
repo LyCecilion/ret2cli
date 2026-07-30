@@ -10,8 +10,15 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, fenix }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      fenix,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         toolchain = fenix.packages.${system}.stable.withComponents [
@@ -28,6 +35,7 @@
           nativeBuildInputs = [
             toolchain
             pkgs.pkg-config
+            pkgs.nixfmt
           ];
 
           buildInputs = [
@@ -38,6 +46,8 @@
             echo "ret2cli dev shell — $(rustc --version)"
           '';
         };
+
+        formatter = pkgs.nixfmt;
       }
     );
 }
