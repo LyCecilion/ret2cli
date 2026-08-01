@@ -437,7 +437,7 @@ async fn required_game(
 ) -> CliResult<i64> {
     resolve_game_id(client, config, profile_name, game).await?.ok_or_else(|| {
         CliError::Config(
-            "no game selected; run 'ret2cli game use <game>' or pass --game".to_owned(),
+            "no game selected; run 'ret2cli game select <game>' or pass --game".to_owned(),
         )
     })
 }

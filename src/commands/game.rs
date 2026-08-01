@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
@@ -162,6 +164,22 @@ struct TeamEntry {
     id: i64,
     name: Option<String>,
     score: Option<i64>,
+    institute_id: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct InstituteEntry {
+    id: i64,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct ScoreboardEntry {
+    id: i64,
+    name: Option<String>,
+    score: Option<i64>,
+    institute_id: Option<i64>,
+    institute_name: Option<String>,
 }
 
 pub async fn scoreboard(
@@ -177,6 +195,8 @@ pub async fn scoreboard(
         rank: String,
         #[tabled(rename = "Team")]
         name: String,
+        #[tabled(rename = "Group")]
+        group: String,
         #[tabled(rename = "Score")]
         score: String,
         #[tabled(rename = "ID")]
@@ -193,6 +213,11 @@ pub async fn scoreboard(
     // Response: [data_array, total_count]
     let (teams, _total): (Vec<TeamEntry>, i64) =
         client.get(&path, query, config, profile_name).await?;
+    let institutes: Vec<InstituteEntry> =
+        client.get("account/institute", &[], config, profile_name).await?;
+    let institute_names: HashMap<_, _> =
+        institutes.into_iter().map(|item| (item.id, item.name)).collect();
+    let teams = enrich_scoreboard(teams, &institute_names);
 
     if json {
         output::print_json(&teams);
@@ -204,6 +229,7 @@ pub async fn scoreboard(
                 rank: (i + 1).to_string(),
                 id: t.id,
                 name: t.name.unwrap_or_default(),
+                group: t.institute_name.unwrap_or_else(|| "—".to_owned()),
                 score: t.score.map_or_else(|| "0".to_owned(), |s| s.to_string()),
             })
             .collect();
@@ -213,7 +239,7 @@ pub async fn scoreboard(
     Ok(())
 }
 
-pub async fn use_game(
+pub async fn select_game(
     client: &mut Client,
     config: &mut ClientConfig,
     game: String,
@@ -236,6 +262,22 @@ pub async fn use_game(
     Ok(())
 }
 
+fn enrich_scoreboard(
+    teams: Vec<TeamEntry>,
+    institute_names: &HashMap<i64, String>,
+) -> Vec<ScoreboardEntry> {
+    teams
+        .into_iter()
+        .map(|team| ScoreboardEntry {
+            id: team.id,
+            name: team.name,
+            score: team.score,
+            institute_id: team.institute_id,
+            institute_name: team.institute_id.and_then(|id| institute_names.get(&id).cloned()),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -251,5 +293,28 @@ mod tests {
         .unwrap();
         assert_eq!(game.host_type_str(), "Training");
         assert_eq!(game.start_at, 1);
+    }
+
+    #[test]
+    fn scoreboard_maps_institute_names_to_groups() {
+        let teams = vec![
+            TeamEntry {
+                id: 1,
+                name: Some("Grouped".to_owned()),
+                score: Some(100),
+                institute_id: Some(7),
+            },
+            TeamEntry {
+                id: 2,
+                name: Some("Independent".to_owned()),
+                score: Some(50),
+                institute_id: None,
+            },
+        ];
+        let names = HashMap::from([(7, "XDSEC".to_owned())]);
+        let mapped = enrich_scoreboard(teams, &names);
+        assert_eq!(mapped[0].institute_id, Some(7));
+        assert_eq!(mapped[0].institute_name.as_deref(), Some("XDSEC"));
+        assert_eq!(mapped[1].institute_name, None);
     }
 }

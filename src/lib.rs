@@ -141,8 +141,8 @@ async fn dispatch_network(
             GameCommand::Show { game } => {
                 commands::game::game(&mut client, config, game, json, profile_name).await
             }
-            GameCommand::Use { game } => {
-                commands::game::use_game(&mut client, config, game, profile_name, json).await
+            GameCommand::Select { game } => {
+                commands::game::select_game(&mut client, config, game, profile_name, json).await
             }
             GameCommand::Scoreboard(args) => {
                 commands::game::scoreboard(&mut client, config, args, json, profile_name).await
@@ -363,7 +363,7 @@ mod tests {
             "account remove alice --yes",
             "game list --type training",
             "game show 11",
-            "game use 11",
+            "game select 11",
             "game scoreboard",
             "game challenge list",
             "game challenge show pwn",
@@ -400,6 +400,11 @@ mod tests {
     #[test]
     fn account_status_alias_is_removed() {
         assert!(Cli::try_parse_from(["ret2cli", "account", "status"]).is_err());
+    }
+
+    #[test]
+    fn game_use_alias_is_removed() {
+        assert!(Cli::try_parse_from(["ret2cli", "game", "use", "11"]).is_err());
     }
 
     #[test]

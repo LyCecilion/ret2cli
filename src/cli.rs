@@ -90,7 +90,7 @@ pub enum GameCommand {
     /// Show one game
     Show { game: Option<String> },
     /// Save the selected game in the current profile
-    Use { game: String },
+    Select { game: String },
     /// Show the selected game's scoreboard
     Scoreboard(GameContextArgs),
     /// Work with challenges in the selected game

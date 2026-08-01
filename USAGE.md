@@ -57,7 +57,7 @@ ret2cli account login --url https://ctf.xidian.edu.cn/ --account lycecilion
 
 # 选择比赛；选择结果保存在当前 profile 中
 ret2cli game list
-ret2cli game use 11
+ret2cli game select 11
 
 # 浏览和解题
 ret2cli game challenge list
@@ -119,7 +119,7 @@ ret2cli --url https://temporary.example/ --token "$TOKEN" game list
 
 未知 profile 会立即报错，不会静默退回 default。只覆盖 URL 时不会携带当前 profile 的 token，避免把一个 Ret2Shell 实例的凭据发送给另一个实例；临时认证必须同时显式提供 `--token`。
 
-`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game use`。新格式为：
+`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game select`。新格式为：
 
 ```toml
 [profiles.default.game]
@@ -134,11 +134,11 @@ ret2cli game list
 ret2cli game list --type training
 ret2cli game list --page 2 --page-size 10
 ret2cli game show 11
-ret2cli game use 'MoeCTF 2026'
+ret2cli game select 'MoeCTF 2026'
 ret2cli game scoreboard
 ```
 
-比赛可以用数字 ID、完整名称或唯一的名称前缀指定。
+比赛可以用数字 ID、完整名称或唯一的名称前缀指定。`game select` 会保存后端返回的规范 ID 与名称，不保留旧的 `game use` 别名。scoreboard 的 `Group` 列表示 Ret2Shell institute；未分组显示 `—`，JSON 同时保留 `institute_id` 并增加 `institute_name`。若 institute 映射请求失败，scoreboard 会明确失败，不会输出可能误导的空组名。
 
 ### 题目
 
