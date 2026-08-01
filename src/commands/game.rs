@@ -149,8 +149,8 @@ pub async fn game(
         output::print_key_value(&pairs);
 
         if let Some(ref brief) = game.brief {
-            println!();
-            println!("{brief}");
+            output::blank();
+            output::line(brief);
         }
     }
 
@@ -223,12 +223,15 @@ pub async fn use_game(
     let id = resolve_game_id(client, config, profile_name, Some(&game))
         .await?
         .ok_or_else(|| crate::CliError::Config("game not found".to_owned()))?;
-    config.active_profile_mut(profile_name)?.game = Some(id.to_string());
+    let path = format!("game/{id}");
+    let selected: GameInfo = client.get(&path, &[], config, profile_name).await?;
+    let selected = crate::config::SelectedGame { id: selected.id, name: selected.name };
+    config.active_profile_mut(profile_name)?.game = Some(selected.clone());
     config.save()?;
     if json {
-        output::print_json(&serde_json::json!({ "game": id }));
+        output::print_json(&serde_json::json!({ "game": selected }));
     } else {
-        output::success(&format!("Selected game '{game}' ({id})"));
+        output::success(&format!("Selected game {selected}"));
     }
     Ok(())
 }

@@ -189,11 +189,11 @@ pub fn list(config: &ClientConfig, profile_name: Option<&str>, json: bool) -> Cl
             .collect();
         output::print_json(&rows);
     } else if accounts.is_empty() {
-        println!("No saved accounts.");
+        output::line("No saved accounts.");
     } else {
         for account in accounts {
             let marker = if profile.active_account.as_ref() == Some(account) { "*" } else { " " };
-            println!("{marker} {account}");
+            output::line(&format!("{marker} {account}"));
         }
     }
     Ok(())

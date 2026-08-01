@@ -148,12 +148,12 @@ pub async fn view(
         ("Status", if solved { "Solved" } else { "Unsolved" }),
     ]);
     if let Some(content) = &item.content {
-        println!();
+        output::blank();
         output::print_markdown(content);
     }
     let files = fetch_files(client, config, profile_name, game_id, id).await?;
     if !files.is_empty() {
-        println!();
+        output::blank();
         output::info(&format!("{} attachment(s) available", files.len()));
     }
     Ok(())
@@ -364,7 +364,7 @@ pub async fn files(
         output::print_json(&items);
     } else {
         for file in items {
-            println!("{:<8} {}", file.folder, file.file);
+            output::line(&format!("{:<8} {}", file.folder, file.file));
         }
     }
     Ok(())

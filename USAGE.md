@@ -26,11 +26,11 @@ ret2cli interactive
 ```text
 Ret2CLI 0.1.0 interactive shell
 Type "help" for commands, "context" for the active context, or "exit" to leave.
-profile=default  account=alice  game=11
+profile=default  account=alice  game=11 (MoeCTF 2026)
 >>> game list
->>> challenge show phptrick
->>> challenge submit phptrick --flag 'flag{...}'
->>> ret2cli submission list
+>>> game challenge show phptrick
+>>> game challenge submit phptrick --flag 'flag{...}'
+>>> ret2cli game submission list
 >>> exit
 ```
 
@@ -39,7 +39,7 @@ profile=default  account=alice  game=11
 交互内置命令：
 
 - `help`：显示完整命令树；
-- `help challenge submit`：显示指定命令的帮助；
+- `help game challenge submit`：显示指定命令的帮助；
 - `context`：显示当前 profile、账号和比赛；
 - `exit`、`quit`、`exit()`、`quit()`：退出；
 - `Ctrl-C`：取消当前输入并回到提示符；
@@ -60,9 +60,9 @@ ret2cli game list
 ret2cli game use 11
 
 # 浏览和解题
-ret2cli challenge list
-ret2cli challenge show phptrick
-ret2cli challenge submit phptrick --flag 'flag{...}'
+ret2cli game challenge list
+ret2cli game challenge show phptrick
+ret2cli game challenge submit phptrick --flag 'flag{...}'
 ```
 
 登录时省略 `--password` 会安全地隐藏输入。自动化环境可显式传入 `--password`，但应避免把密码留在 shell 历史中。
@@ -110,6 +110,14 @@ ret2cli --url https://temporary.example/ --token "$TOKEN" game list
 
 未知 profile 会立即报错，不会静默退回 default。只覆盖 URL 时不会携带当前 profile 的 token，避免把一个 Ret2Shell 实例的凭据发送给另一个实例；临时认证必须同时显式提供 `--token`。
 
+`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game use`。新格式为：
+
+```toml
+[profiles.default.game]
+id = 11
+name = "MoeCTF 2026"
+```
+
 ### 比赛
 
 ```bash
@@ -126,13 +134,13 @@ ret2cli game scoreboard
 ### 题目
 
 ```bash
-ret2cli challenge list
-ret2cli challenge show phptrick
-ret2cli challenge submit phptrick --flag 'flag{...}'
-ret2cli challenge hints phptrick
-ret2cli challenge unlock-hint phptrick --id 3
-ret2cli challenge start phptrick
-ret2cli challenge stop phptrick
+ret2cli game challenge list
+ret2cli game challenge show phptrick
+ret2cli game challenge submit phptrick --flag 'flag{...}'
+ret2cli game challenge hints phptrick
+ret2cli game challenge unlock-hint phptrick --id 3
+ret2cli game challenge start phptrick
+ret2cli game challenge stop phptrick
 ```
 
 提交 flag 后，客户端会等待 Ret2Shell 的异步 checker 返回最终结果，而不是把刚创建的 pending submission 当成判题结果。
@@ -140,47 +148,47 @@ ret2cli challenge stop phptrick
 所有题目命令都可用 `--game <比赛>` 临时覆盖当前比赛：
 
 ```bash
-ret2cli challenge list --game 37
+ret2cli game challenge list --game 37
 ```
 
 ### 附件
 
 ```bash
 # 查看后端实际提供的附件
-ret2cli challenge files phptrick
+ret2cli game challenge files phptrick
 
 # 未指定 --file：全部下载到以题目名命名的目录
-ret2cli challenge download phptrick
+ret2cli game challenge download phptrick
 
 # 单独下载，并可指定目标文件
-ret2cli challenge download phptrick --file attachment.zip
-ret2cli challenge download phptrick --file attachment.zip --output ./task.zip
+ret2cli game challenge download phptrick --file attachment.zip
+ret2cli game challenge download phptrick --file attachment.zip --output ./task.zip
 ```
 
-客户端会分别下载 static/mapped 文件，不会把附件列表 JSON 冒充 ZIP 文件保存。未指定 `--file` 会下载全部附件；若要挑选多个附件，可分别执行多条 `challenge download ... --file ...`。
+客户端会分别下载 static/mapped 文件，不会把附件列表 JSON 冒充 ZIP 文件保存。未指定 `--file` 会下载全部附件；若要挑选多个附件，可分别执行多条 `game challenge download ... --file ...`。
 
 ### 队伍
 
 ```bash
-ret2cli team list
-ret2cli team show 'Team Name'
-ret2cli team mine
-ret2cli team create --name 'Team Name' --tag XDSEC
-ret2cli team join '<invitation-token>'
-ret2cli team leave
+ret2cli game team list
+ret2cli game team show 'Team Name'
+ret2cli game team mine
+ret2cli game team create --name 'Team Name' --tag XDSEC
+ret2cli game team join '<invitation-token>'
+ret2cli game team leave
 ```
 
 脚本或 JSON 模式下退出队伍必须显式确认：
 
 ```bash
-ret2cli --json team leave --yes
+ret2cli --json game team leave --yes
 ```
 
 ### 提交记录
 
 ```bash
-ret2cli submission list
-ret2cli submission list --game 11
+ret2cli game submission list
+ret2cli game submission list --game 11
 ```
 
 ## JSON 与自动化
@@ -193,6 +201,8 @@ ret2cli --json account show | jq .nickname
 ```
 
 JSON 模式和非 TTY 环境绝不弹出输入提示。缺少必要参数时命令直接以非零状态退出；下载进度也不会混入 stdout。
+
+可能产生较长的人类可读输出时，可以使用全局 `--pager auto|always|never`。默认 `auto` 只在 stdout 是终端且内容超过终端高度时分页；`always` 强制使用 `$PAGER`（不通过 shell 启动），`never` 始终直接输出。`$PAGER` 不可用时会依次尝试 `less -R`、系统 `more`，最终安全回退到 stdout。JSON、管道、重定向和补全不会自动分页。
 
 常用退出码：
 
@@ -221,7 +231,10 @@ active_profile = "default"
 [profiles.default]
 url = "https://ctf.xidian.edu.cn/"
 active_account = "lycecilion"
-game = "11"
+
+[profiles.default.game]
+id = 11
+name = "MoeCTF 2026"
 
 [profiles.default.accounts.lycecilion]
 token = "<redacted>"

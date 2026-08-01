@@ -141,9 +141,10 @@ async fn show_team(
         ("Solves", &solve_count),
     ]);
     if !members.is_empty() {
-        println!("\nMembers:");
+        output::blank();
+        output::line("Members:");
         for m in members {
-            println!("  • {} ({})", m.nickname, m.account);
+            output::line(&format!("  • {} ({})", m.nickname, m.account));
         }
     }
     Ok(())

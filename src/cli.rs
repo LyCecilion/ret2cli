@@ -19,41 +19,30 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub token: Option<String>,
 
+    /// Control paging for human-readable command output
+    #[arg(long, global = true, value_enum, default_value_t = PagerMode::Auto)]
+    pub pager: PagerMode,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Account authentication and identity
-    Account {
-        #[command(subcommand)]
-        command: AccountCommand,
-    },
     /// Manage local `Ret2Shell` connection profiles
     Profile {
         #[command(subcommand)]
         command: ProfileCommand,
     },
-    /// Browse and select games
+    /// Account authentication and identity
+    Account {
+        #[command(subcommand)]
+        command: AccountCommand,
+    },
+    /// Work with games and their challenges, teams, and submissions
     Game {
         #[command(subcommand)]
         command: GameCommand,
-    },
-    /// Work with challenges in the selected game
-    Challenge {
-        #[command(subcommand)]
-        command: ChallengeCommand,
-    },
-    /// Manage teams in the selected game
-    Team {
-        #[command(subcommand)]
-        command: TeamCommand,
-    },
-    /// View submission history
-    Submission {
-        #[command(subcommand)]
-        command: SubmissionCommand,
     },
     /// Open the interpreter-style interactive shell
     Interactive,
@@ -92,10 +81,37 @@ pub enum ProfileCommand {
 
 #[derive(Subcommand, Debug)]
 pub enum GameCommand {
+    /// List available games
     List(GameListArgs),
+    /// Show one game
     Show { game: Option<String> },
+    /// Save the selected game in the current profile
     Use { game: String },
+    /// Show the selected game's scoreboard
     Scoreboard(GameContextArgs),
+    /// Work with challenges in the selected game
+    Challenge {
+        #[command(subcommand)]
+        command: ChallengeCommand,
+    },
+    /// Manage teams in the selected game
+    Team {
+        #[command(subcommand)]
+        command: TeamCommand,
+    },
+    /// View submission history
+    Submission {
+        #[command(subcommand)]
+        command: SubmissionCommand,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum PagerMode {
+    #[default]
+    Auto,
+    Always,
+    Never,
 }
 
 #[derive(Subcommand, Debug)]

@@ -43,7 +43,14 @@ pub async fn run(cli: Cli) -> CliResult<()> {
 }
 
 pub(crate) async fn run_in_session(cli: Cli, config: &mut ClientConfig) -> CliResult<()> {
-    let Cli { json, profile, url, token, command } = cli;
+    let capture = output::Capture::start(cli.pager, cli.json);
+    let result = run_in_session_inner(cli, config).await;
+    let output_result = capture.finish();
+    result.and(output_result)
+}
+
+async fn run_in_session_inner(cli: Cli, config: &mut ClientConfig) -> CliResult<()> {
+    let Cli { json, profile, url, token, pager: _, command } = cli;
     let profile_name = profile.as_deref();
 
     match command {
@@ -134,33 +141,34 @@ async fn dispatch_network(
             GameCommand::Scoreboard(args) => {
                 commands::game::scoreboard(&mut client, config, args, json, profile_name).await
             }
+            GameCommand::Challenge { command } => {
+                dispatch_challenge(&mut client, config, command, json, profile_name).await
+            }
+            GameCommand::Team { command } => match command {
+                TeamCommand::List(args) => {
+                    commands::team::teams(&mut client, config, args, json, profile_name).await
+                }
+                TeamCommand::Show(args) => {
+                    commands::team::team(&mut client, config, args, json, profile_name).await
+                }
+                TeamCommand::Mine(args) => {
+                    commands::team::my(&mut client, config, args, json, profile_name).await
+                }
+                TeamCommand::Create(args) => {
+                    commands::team::team_create(&mut client, config, args, json, profile_name).await
+                }
+                TeamCommand::Join(args) => {
+                    commands::team::team_join(&mut client, config, args, json, profile_name).await
+                }
+                TeamCommand::Leave(args) => {
+                    commands::team::team_leave(&mut client, config, args, json, profile_name).await
+                }
+            },
+            GameCommand::Submission { command: SubmissionCommand::List(args) } => {
+                commands::submission::submissions(&mut client, config, args, json, profile_name)
+                    .await
+            }
         },
-        Commands::Challenge { command } => {
-            dispatch_challenge(&mut client, config, command, json, profile_name).await
-        }
-        Commands::Team { command } => match command {
-            TeamCommand::List(args) => {
-                commands::team::teams(&mut client, config, args, json, profile_name).await
-            }
-            TeamCommand::Show(args) => {
-                commands::team::team(&mut client, config, args, json, profile_name).await
-            }
-            TeamCommand::Mine(args) => {
-                commands::team::my(&mut client, config, args, json, profile_name).await
-            }
-            TeamCommand::Create(args) => {
-                commands::team::team_create(&mut client, config, args, json, profile_name).await
-            }
-            TeamCommand::Join(args) => {
-                commands::team::team_join(&mut client, config, args, json, profile_name).await
-            }
-            TeamCommand::Leave(args) => {
-                commands::team::team_leave(&mut client, config, args, json, profile_name).await
-            }
-        },
-        Commands::Submission { command: SubmissionCommand::List(args) } => {
-            commands::submission::submissions(&mut client, config, args, json, profile_name).await
-        }
         Commands::Profile { .. } | Commands::Interactive | Commands::Completion(_) => {
             unreachable!()
         }
@@ -231,8 +239,8 @@ async fn resolve_game_id(
     }
     let value = match game {
         Some(value) => value.to_owned(),
-        None => match config.active_profile_resolved(profile_name)?.game.clone() {
-            Some(value) => value,
+        None => match config.active_profile_resolved(profile_name)?.game.as_ref() {
+            Some(value) => return Ok(Some(value.id)),
             None => return Ok(None),
         },
     };
@@ -291,16 +299,19 @@ async fn resolve_challenge_id(
 mod tests {
     use crate::{
         Cli,
-        cli::{AccountCommand, ChallengeCommand, Commands},
+        cli::{AccountCommand, ChallengeCommand, Commands, GameCommand},
     };
-    use clap::Parser;
+    use clap::{CommandFactory, Parser};
     #[test]
     fn parses_new_command_tree() {
         let cli =
-            Cli::try_parse_from(["ret2cli", "challenge", "submit", "pwn", "--flag", "x"]).unwrap();
+            Cli::try_parse_from(["ret2cli", "game", "challenge", "submit", "pwn", "--flag", "x"])
+                .unwrap();
         assert!(matches!(
             cli.command,
-            Some(Commands::Challenge { command: ChallengeCommand::Submit(_) })
+            Some(Commands::Game {
+                command: GameCommand::Challenge { command: ChallengeCommand::Submit(_) }
+            })
         ));
     }
     #[test]
@@ -344,28 +355,49 @@ mod tests {
             "game show 11",
             "game use 11",
             "game scoreboard",
-            "challenge list",
-            "challenge show pwn",
-            "challenge submit pwn --flag flag{test}",
-            "challenge hints pwn",
-            "challenge unlock-hint pwn --id 3",
-            "challenge start pwn",
-            "challenge stop pwn",
-            "challenge files pwn",
-            "challenge download pwn --file attachment.zip --output task.zip",
-            "team list",
-            "team show example",
-            "team mine",
-            "team create --name example --tag TEST",
-            "team join invitation-token",
-            "team leave --yes",
-            "submission list",
+            "game challenge list",
+            "game challenge show pwn",
+            "game challenge submit pwn --flag flag{test}",
+            "game challenge hints pwn",
+            "game challenge unlock-hint pwn --id 3",
+            "game challenge start pwn",
+            "game challenge stop pwn",
+            "game challenge files pwn",
+            "game challenge download pwn --file attachment.zip --output task.zip",
+            "game team list",
+            "game team show example",
+            "game team mine",
+            "game team create --name example --tag TEST",
+            "game team join invitation-token",
+            "game team leave --yes",
+            "game submission list",
         ];
 
         for command in commands {
             let args = std::iter::once("ret2cli").chain(command.split_ascii_whitespace());
             assert!(Cli::try_parse_from(args).is_ok(), "one-line command did not parse: {command}");
         }
+    }
+
+    #[test]
+    fn old_root_level_game_resource_paths_are_removed() {
+        for command in ["challenge list", "team list", "submission list"] {
+            let args = std::iter::once("ret2cli").chain(command.split_ascii_whitespace());
+            assert!(Cli::try_parse_from(args).is_err(), "obsolete command parsed: {command}");
+        }
+    }
+
+    #[test]
+    fn root_help_uses_semantic_group_order() {
+        let help = Cli::command().render_long_help().to_string();
+        let positions: Vec<_> = ["profile", "account", "game", "interactive", "completion"]
+            .into_iter()
+            .map(|name| help.find(&format!("  {name}")).unwrap())
+            .collect();
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(!help.contains("  challenge "));
+        assert!(!help.contains("  team "));
+        assert!(!help.contains("  submission "));
     }
 
     #[test]

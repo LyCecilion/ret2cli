@@ -8,6 +8,7 @@ pub mod team;
 use std::io::{self, IsTerminal};
 
 use dialoguer::{Confirm, Input, Password};
+use tabled::Tabled;
 
 use crate::{
     cli::{CompletionArgs, ProfileAddArgs, ProfileRemoveArgs},
@@ -77,11 +78,36 @@ pub fn profile_list(config: &ClientConfig, json: bool) {
             .collect();
         output::print_json(&rows);
     } else {
-        for name in names {
-            let marker = if name == &config.active_profile { "*" } else { " " };
-            let account = config.profiles[name].active_account.as_deref().unwrap_or("anonymous");
-            println!("{marker} {name:<16} {:<24} {account}", config.profiles[name].url);
+        #[derive(Tabled)]
+        struct Row {
+            #[tabled(rename = "Active")]
+            active: &'static str,
+            #[tabled(rename = "Name")]
+            name: String,
+            #[tabled(rename = "URL")]
+            url: String,
+            #[tabled(rename = "Account")]
+            account: String,
+            #[tabled(rename = "Game")]
+            game: String,
         }
+        let rows: Vec<_> = names
+            .into_iter()
+            .map(|name| {
+                let profile = &config.profiles[name];
+                Row {
+                    active: if name == &config.active_profile { "*" } else { "" },
+                    name: name.clone(),
+                    url: profile.url.clone(),
+                    account: profile
+                        .active_account
+                        .clone()
+                        .unwrap_or_else(|| "anonymous".to_owned()),
+                    game: profile.game.as_ref().map_or_else(|| "—".to_owned(), ToString::to_string),
+                }
+            })
+            .collect();
+        output::print_table(&rows);
     }
 }
 
@@ -105,7 +131,7 @@ pub fn profile_show(config: &ClientConfig, name: Option<&str>, json: bool) -> Cl
             ("URL", &profile.url),
             ("Account", profile.active_account.as_deref().unwrap_or("—")),
             ("Saved accounts", &profile.accounts.len().to_string()),
-            ("Game", profile.game.as_deref().unwrap_or("—")),
+            ("Game", &profile.game.as_ref().map_or_else(|| "—".to_owned(), ToString::to_string)),
             ("Status", if profile.active_token().is_some() { "Token stored" } else { "No token" }),
         ]);
     }

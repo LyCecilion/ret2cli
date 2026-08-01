@@ -149,7 +149,7 @@ fn print_context(config: &ClientConfig) -> CliResult<()> {
         "profile={}  account={}  game={}",
         profile_name,
         profile.active_account.as_deref().unwrap_or("anonymous"),
-        profile.game.as_deref().unwrap_or("none")
+        profile.game.as_ref().map_or_else(|| "none".to_owned(), ToString::to_string)
     );
     Ok(())
 }
@@ -183,17 +183,19 @@ mod tests {
     use super::*;
     use crate::{
         Commands,
-        cli::{ChallengeCommand, TeamCommand},
+        cli::{ChallengeCommand, GameCommand, TeamCommand},
     };
 
     #[test]
     fn parses_the_same_command_tree_without_an_executable_name() {
         let action =
-            parse_line("challenge submit 'shell basics' --flag 'flag{hello world}'").unwrap();
+            parse_line("game challenge submit 'shell basics' --flag 'flag{hello world}'").unwrap();
         assert!(matches!(
             action,
             ReplAction::Command(Cli {
-                command: Some(Commands::Challenge { command: ChallengeCommand::Submit(_) }),
+                command: Some(Commands::Game {
+                    command: GameCommand::Challenge { command: ChallengeCommand::Submit(_) }
+                }),
                 ..
             })
         ));
@@ -201,11 +203,13 @@ mod tests {
 
     #[test]
     fn accepts_pasted_one_line_commands() {
-        let action = parse_line("ret2cli team show 'The A Team'").unwrap();
+        let action = parse_line("ret2cli game team show 'The A Team'").unwrap();
         assert!(matches!(
             action,
             ReplAction::Command(Cli {
-                command: Some(Commands::Team { command: TeamCommand::Show(_) }),
+                command: Some(Commands::Game {
+                    command: GameCommand::Team { command: TeamCommand::Show(_) }
+                }),
                 ..
             })
         ));
@@ -215,7 +219,7 @@ mod tests {
     fn recognizes_interpreter_built_ins() {
         assert!(matches!(parse_line("").unwrap(), ReplAction::Empty));
         assert!(
-            matches!(parse_line("help challenge submit").unwrap(), ReplAction::Help(path) if path == ["challenge", "submit"])
+            matches!(parse_line("help game challenge submit").unwrap(), ReplAction::Help(path) if path == ["game", "challenge", "submit"])
         );
         assert!(matches!(parse_line("context").unwrap(), ReplAction::Context));
         assert!(matches!(parse_line("exit()").unwrap(), ReplAction::Exit));
