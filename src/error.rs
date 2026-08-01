@@ -8,6 +8,8 @@ pub enum CliError {
     #[error("{0}")]
     Config(String),
     #[error("{0}")]
+    Authentication(String),
+    #[error("{0}")]
     Request(#[from] reqwest::Error),
     #[error("failed to serialize response: {0}")]
     Serialize(#[from] serde_json::Error),
@@ -21,6 +23,7 @@ impl CliError {
     #[must_use]
     pub fn exit_code(&self) -> i32 {
         match self {
+            Self::Authentication(_) => 2,
             Self::Request(_) => 5,
             Self::Api { status, .. } => match status {
                 s if *s == StatusCode::UNAUTHORIZED => 2,

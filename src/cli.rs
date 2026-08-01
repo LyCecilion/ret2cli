@@ -60,10 +60,14 @@ pub enum AccountCommand {
     Logout,
     /// Register an account on the selected `Ret2Shell` instance
     Register(RegisterArgs),
-    /// Verify the active account session with the server
-    Status,
+    /// Check whether the active session is alive on the server
+    Ping,
     /// Show the active account's server-side profile
     Show,
+    /// Edit the profile description or avatar
+    Edit(AccountEditArgs),
+    /// Generate a sensitive temporary identity code
+    Code(AccountCodeArgs),
     /// Switch the active account within the selected connection profile
     Use { account: String },
     /// Remove a saved account session without contacting the server
@@ -168,6 +172,42 @@ pub struct AccountRemoveArgs {
     /// Saved account name
     pub account: String,
     /// Skip the confirmation prompt
+    #[arg(long)]
+    pub yes: bool,
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct AccountEditArgs {
+    /// Set the personal introduction directly
+    #[arg(long, conflicts_with = "description_file")]
+    pub description: Option<String>,
+    /// Read the personal introduction from PATH, or stdin with '-'
+    #[arg(long, value_name = "PATH", conflicts_with = "description")]
+    pub description_file: Option<String>,
+    /// Upload a new avatar (maximum 10 MiB)
+    #[arg(long, value_name = "PATH", conflicts_with = "remove_avatar")]
+    pub avatar: Option<std::path::PathBuf>,
+    /// Remove the current avatar
+    #[arg(long, conflicts_with = "avatar")]
+    pub remove_avatar: bool,
+    /// Submit without confirmation
+    #[arg(long)]
+    pub yes: bool,
+}
+
+impl AccountEditArgs {
+    #[must_use]
+    pub fn has_explicit_change(&self) -> bool {
+        self.description.is_some()
+            || self.description_file.is_some()
+            || self.avatar.is_some()
+            || self.remove_avatar
+    }
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct AccountCodeArgs {
+    /// Confirm that the code grants temporary access to your identity
     #[arg(long)]
     pub yes: bool,
 }

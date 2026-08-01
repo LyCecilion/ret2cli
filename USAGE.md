@@ -76,8 +76,13 @@ ret2cli account login --url https://ctf.example/ --account alice
 ret2cli account login --account alice-alt
 ret2cli account list
 ret2cli account use alice
-ret2cli account status
+ret2cli account ping
 ret2cli account show
+ret2cli account edit
+ret2cli account edit --description '# About me' --yes
+ret2cli account edit --description-file ./intro.md --avatar ./avatar.png --yes
+ret2cli account edit --description-file - --remove-avatar --yes
+ret2cli account code
 ret2cli account logout
 ret2cli account remove alice-alt --yes
 
@@ -87,7 +92,11 @@ ret2cli account register --url https://ctf.example/ \
 
 同一个 connection profile 可以保存多个账号会话；每次登录都会保存并切换到该账号，`account use` 切换时不需要重新输入密码。`account logout` 会通知服务器并删除当前账号的本地会话，其他已保存账号不受影响；token 已失效、无法正常登出时可用 `account remove` 仅清理本地会话。
 
-`account status` 会实际请求服务器验证 token。无效或过期的 token 不会被报告为“已登录”。
+`account ping` 只请求服务器验证当前 session 是否仍然存活，并显示往返延迟；它不会重复输出个人资料。缺少 session 或 token 无效时会以认证失败退出。
+
+`account show` 会显示头像 hash，并在终端中渲染 Markdown 格式的 Personal introduction。`account edit` 不带参数时会通过 `$VISUAL` 或 `$EDITOR` 打开多行 Markdown 编辑器，随后在 CLI 中渲染预览并确认；也可用 `--description`、`--description-file <PATH|->`、`--avatar PATH` 或 `--remove-avatar` 完成 one-line 修改。头像上传限制为 10 MiB。JSON 或非 TTY 模式必须显式提供修改内容并传入 `--yes`。客户端提交完整后端 profile 时只改变 description/avatar，并保留昵称、邮箱、权限等字段；它不会提供邮箱、密码、第三方验证服务或删除账号的修改入口。
+
+`account code` 会在确认敏感性后生成六位大写十六进制临时身份验证码，有效期为五分钟。JSON 或非 TTY 模式必须传入 `--yes`。
 
 ### 本地 profile
 

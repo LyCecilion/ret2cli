@@ -149,6 +149,15 @@ fn emit(value: &str) {
     }
 }
 
+pub fn flush_before_prompt() -> CliResult<()> {
+    let content = {
+        let mut state = buffer().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.as_mut().map(std::mem::take).unwrap_or_default()
+    };
+    io::stdout().write_all(content.as_bytes()).map_err(CliError::Io)?;
+    io::stdout().flush().map_err(CliError::Io)
+}
+
 pub fn line(value: &str) {
     emit(value);
     emit("\n");

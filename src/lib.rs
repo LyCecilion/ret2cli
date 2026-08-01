@@ -121,11 +121,17 @@ async fn dispatch_network(
             AccountCommand::Register(args) => {
                 commands::auth::register(&mut client, config, args, json, profile_name).await
             }
-            AccountCommand::Status => {
-                commands::auth::status(&mut client, config, json, profile_name).await
+            AccountCommand::Ping => {
+                commands::auth::ping(&mut client, config, json, profile_name).await
             }
             AccountCommand::Show => {
                 commands::auth::show(&mut client, config, json, profile_name).await
+            }
+            AccountCommand::Edit(args) => {
+                commands::auth::edit(&mut client, config, args, json, profile_name).await
+            }
+            AccountCommand::Code(args) => {
+                commands::auth::code(&mut client, config, args, json, profile_name).await
             }
         },
         Commands::Game { command } => match command {
@@ -347,8 +353,12 @@ mod tests {
             "account login --account alice --password secret",
             "account logout",
             "account register --account alice --nickname Alice --email alice@example.com --password secret",
-            "account status",
+            "account ping",
             "account show",
+            "account edit --description hello --yes",
+            "account edit --description-file intro.md --avatar avatar.png --yes",
+            "account edit --remove-avatar --yes",
+            "account code --yes",
             "account use alice",
             "account remove alice --yes",
             "game list --type training",
@@ -385,6 +395,11 @@ mod tests {
             let args = std::iter::once("ret2cli").chain(command.split_ascii_whitespace());
             assert!(Cli::try_parse_from(args).is_err(), "obsolete command parsed: {command}");
         }
+    }
+
+    #[test]
+    fn account_status_alias_is_removed() {
+        assert!(Cli::try_parse_from(["ret2cli", "account", "status"]).is_err());
     }
 
     #[test]

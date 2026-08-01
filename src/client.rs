@@ -5,6 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{
     Client as HttpClient, Method, Response, Url,
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
+    multipart::Form,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -238,6 +239,24 @@ impl Client {
         Ok(new_token)
     }
 
+    /// Upload multipart form data and deserialize the JSON response.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP, serialization, or config errors.
+    pub async fn post_multipart<T: DeserializeOwned>(
+        &mut self,
+        path: &str,
+        form: Form,
+        config: &mut ClientConfig,
+        profile_name: Option<&str>,
+    ) -> CliResult<T> {
+        let response = self.request(Method::POST, path, &[])?.multipart(form).send().await?;
+        let (value, new_token) = self.typed_response::<T>(response).await?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
+        Ok(value)
+    }
+
     /// Send a PATCH request with a JSON body and deserialize the response.
     ///
     /// # Errors
@@ -254,6 +273,23 @@ impl Client {
         let (value, new_token) = self.typed_response::<T>(response).await?;
         self.handle_token(new_token.as_deref(), config, profile_name)?;
         Ok(value)
+    }
+
+    /// Send a PATCH request with a JSON body and expect no response body.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP or config errors.
+    pub async fn patch_no_body<B: Serialize + ?Sized>(
+        &mut self,
+        path: &str,
+        body: &B,
+        config: &mut ClientConfig,
+        profile_name: Option<&str>,
+    ) -> CliResult<()> {
+        let response = self.request(Method::PATCH, path, &[])?.json(body).send().await?;
+        let (_, new_token) = self.check_response(response).await?;
+        self.handle_token(new_token.as_deref(), config, profile_name)
     }
 
     /// Send a DELETE request.

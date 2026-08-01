@@ -51,6 +51,7 @@ pub fn confirm(prompt: &str, yes: bool, json: bool) -> CliResult<bool> {
     if json || !io::stdin().is_terminal() {
         return Err(CliError::Config("confirmation required; pass --yes".to_owned()));
     }
+    output::flush_before_prompt()?;
     Confirm::new()
         .with_prompt(prompt)
         .default(false)
