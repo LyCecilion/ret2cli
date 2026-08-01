@@ -180,12 +180,14 @@ ret2cli game challenge download phptrick --file attachment.zip --output ./task.z
 
 ```bash
 ret2cli game team list
-ret2cli game team show 'Team Name'
-ret2cli game team mine
+ret2cli game team show Team Name
+ret2cli game team show mine
 ret2cli game team create --name 'Team Name' --tag XDSEC
 ret2cli game team join '<invitation-token>'
 ret2cli game team leave
 ```
+
+`game team show` 会把一个或多个位置参数拼成队伍名，因此包含空格的名称无需引号也能查询；仍支持数字 ID、大小写不敏感的完整名称和唯一前缀。前缀不唯一时错误信息会列出候选队伍。`mine` 是 `show` 下保留的自身队伍目标；确实名为 `mine` 的队伍仍可通过数字 ID 访问。旧的 `game team mine` 路径不再保留。
 
 脚本或 JSON 模式下退出队伍必须显式确认：
 

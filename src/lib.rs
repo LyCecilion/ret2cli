@@ -157,9 +157,6 @@ async fn dispatch_network(
                 TeamCommand::Show(args) => {
                     commands::team::team(&mut client, config, args, json, profile_name).await
                 }
-                TeamCommand::Mine(args) => {
-                    commands::team::my(&mut client, config, args, json, profile_name).await
-                }
                 TeamCommand::Create(args) => {
                     commands::team::team_create(&mut client, config, args, json, profile_name).await
                 }
@@ -305,7 +302,7 @@ async fn resolve_challenge_id(
 mod tests {
     use crate::{
         Cli,
-        cli::{AccountCommand, ChallengeCommand, Commands, GameCommand},
+        cli::{AccountCommand, ChallengeCommand, Commands, GameCommand, TeamCommand},
     };
     use clap::{CommandFactory, Parser};
     #[test]
@@ -376,7 +373,8 @@ mod tests {
             "game challenge download pwn --file attachment.zip --output task.zip",
             "game team list",
             "game team show example",
-            "game team mine",
+            "game team show mine",
+            "game team show The A Team",
             "game team create --name example --tag TEST",
             "game team join invitation-token",
             "game team leave --yes",
@@ -405,6 +403,25 @@ mod tests {
     #[test]
     fn game_use_alias_is_removed() {
         assert!(Cli::try_parse_from(["ret2cli", "game", "use", "11"]).is_err());
+    }
+
+    #[test]
+    fn old_team_mine_path_is_removed() {
+        assert!(Cli::try_parse_from(["ret2cli", "game", "team", "mine"]).is_err());
+    }
+
+    #[test]
+    fn unquoted_multiword_team_names_are_collected() {
+        let cli =
+            Cli::try_parse_from(["ret2cli", "game", "team", "show", "The", "A", "Team"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Game {
+                command: GameCommand::Team {
+                    command: TeamCommand::Show(args)
+                }
+            }) if args.team_name() == "The A Team"
+        ));
     }
 
     #[test]

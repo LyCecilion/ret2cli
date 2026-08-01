@@ -135,7 +135,6 @@ pub enum ChallengeCommand {
 pub enum TeamCommand {
     List(GameContextArgs),
     Show(TeamShowArgs),
-    Mine(GameContextArgs),
     Create(TeamCreateArgs),
     Join(TeamJoinArgs),
     Leave(TeamLeaveArgs),
@@ -299,9 +298,23 @@ pub struct DownloadArgs {
 
 #[derive(Args, Debug, Clone)]
 pub struct TeamShowArgs {
-    pub team: String,
+    /// Team name as one or more words, a numeric ID, or the reserved word 'mine'
+    #[arg(required = true, num_args = 1..)]
+    pub team: Vec<String>,
     #[arg(long)]
     pub game: Option<String>,
+}
+
+impl TeamShowArgs {
+    #[must_use]
+    pub fn team_name(&self) -> String {
+        self.team.join(" ")
+    }
+
+    #[must_use]
+    pub fn is_mine(&self) -> bool {
+        self.team.len() == 1 && self.team[0].eq_ignore_ascii_case("mine")
+    }
 }
 
 #[derive(Args, Debug, Clone)]
