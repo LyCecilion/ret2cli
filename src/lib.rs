@@ -58,10 +58,7 @@ async fn run_in_session_inner(cli: Cli, config: &mut ClientConfig) -> CliResult<
         Some(Commands::Interactive) => {
             Err(CliError::Config("already in interactive mode".to_owned()))
         }
-        Some(Commands::Completion(args)) => {
-            commands::completion(args);
-            Ok(())
-        }
+        Some(Commands::Completion(args)) => commands::completion(args, json),
         Some(Commands::Profile { command }) => match command {
             ProfileCommand::List => {
                 commands::profile_list(config, json);
@@ -379,6 +376,8 @@ mod tests {
             "game team join invitation-token",
             "game team leave --yes",
             "game submission list",
+            "completion bash --output completions.bash",
+            "completion zsh --yes",
         ];
 
         for command in commands {
@@ -421,6 +420,25 @@ mod tests {
                     command: TeamCommand::Show(args)
                 }
             }) if args.team_name() == "The A Team"
+        ));
+    }
+
+    #[test]
+    fn parses_safe_completion_output_options() {
+        let cli = Cli::try_parse_from([
+            "ret2cli",
+            "completion",
+            "bash",
+            "--output",
+            "completion.bash",
+            "--force",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Completion(args))
+                if args.output.as_deref() == Some(std::path::Path::new("completion.bash"))
+                    && args.force
         ));
     }
 

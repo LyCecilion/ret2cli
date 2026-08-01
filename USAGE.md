@@ -227,10 +227,17 @@ JSON 模式和非 TTY 环境绝不弹出输入提示。缺少必要参数时命�
 ## Shell 补全
 
 ```bash
+# 非 TTY stdout 会直接输出，保留 source <(...) 用法
 source <(ret2cli completion bash)
 source <(ret2cli completion zsh)
 ret2cli completion fish | source
+
+# 安全导出到文件；已有文件默认拒绝覆盖
+ret2cli completion bash --output ~/.local/share/bash-completion/completions/ret2cli
+ret2cli completion zsh --output ~/.zfunc/_ret2cli --force
 ```
+
+不指定 `--output` 且 stdout 是终端时，客户端先显示脚本的行数和字节数，并询问是否展开；`--yes` 可跳过确认。管道或重定向时会直接输出完整脚本，不额外插入提示文本。completion 始终绕过 pager，且拒绝与 `--json` 同时使用。
 
 ## 配置
 

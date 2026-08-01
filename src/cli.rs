@@ -347,4 +347,13 @@ pub struct CompletionArgs {
     #[arg(value_enum)]
     #[allow(clippy::needless_pass_by_value)]
     pub shell: clap_complete::Shell,
+    /// Write the generated script to a file
+    #[arg(long, value_name = "PATH")]
+    pub output: Option<std::path::PathBuf>,
+    /// Overwrite an existing output file
+    #[arg(long, requires = "output")]
+    pub force: bool,
+    /// Print to an interactive terminal without confirmation
+    #[arg(long)]
+    pub yes: bool,
 }

@@ -158,6 +158,11 @@ pub fn flush_before_prompt() -> CliResult<()> {
     io::stdout().flush().map_err(CliError::Io)
 }
 
+pub fn write_direct(bytes: &[u8]) -> CliResult<()> {
+    io::stdout().write_all(bytes).map_err(CliError::Io)?;
+    io::stdout().flush().map_err(CliError::Io)
+}
+
 pub fn line(value: &str) {
     emit(value);
     emit("\n");
