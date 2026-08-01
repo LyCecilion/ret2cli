@@ -90,8 +90,12 @@ pub async fn team(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
+    if args.is_mine() {
+        return my(client, config, GameContextArgs { game: args.game }, json, profile_name).await;
+    }
     let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
-    let team_id = resolve_team(client, config, profile_name, game_id, &args.team).await?;
+    let team_name = args.team_name();
+    let team_id = resolve_team(client, config, profile_name, game_id, &team_name).await?;
     show_team(client, config, profile_name, game_id, team_id, json).await
 }
 
@@ -141,9 +145,10 @@ async fn show_team(
         ("Solves", &solve_count),
     ]);
     if !members.is_empty() {
-        println!("\nMembers:");
+        output::blank();
+        output::line("Members:");
         for m in members {
-            println!("  • {} ({})", m.nickname, m.account);
+            output::line(&format!("  • {} ({})", m.nickname, m.account));
         }
     }
     Ok(())
@@ -231,18 +236,32 @@ async fn resolve_team(
     if let Ok(id) = value.parse() {
         return Ok(id);
     }
-    let matches: Vec<_> = fetch_teams(client, config, profile_name, game_id)
-        .await?
-        .into_iter()
-        .filter(|t| {
-            t.name.eq_ignore_ascii_case(value)
-                || t.name.to_lowercase().starts_with(&value.to_lowercase())
-        })
-        .collect();
-    if matches.len() == 1 {
-        Ok(matches[0].id)
+    let teams = fetch_teams(client, config, profile_name, game_id).await?;
+    resolve_team_candidates(&teams, value)
+}
+
+fn resolve_team_candidates(teams: &[TeamInfo], value: &str) -> CliResult<i64> {
+    let exact: Vec<_> = teams.iter().filter(|team| team.name.eq_ignore_ascii_case(value)).collect();
+    if exact.len() == 1 {
+        return Ok(exact[0].id);
+    }
+    let lowered = value.to_lowercase();
+    let candidates: Vec<_> = if exact.is_empty() {
+        teams.iter().filter(|team| team.name.to_lowercase().starts_with(&lowered)).collect()
     } else {
-        Err(CliError::Config(format!("team '{value}' is missing or ambiguous")))
+        exact
+    };
+    match candidates.as_slice() {
+        [team] => Ok(team.id),
+        [] => Err(CliError::Config(format!("team '{value}' was not found"))),
+        _ => {
+            let choices = candidates
+                .iter()
+                .map(|team| format!("{} ({})", team.id, team.name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(CliError::Config(format!("team '{value}' is ambiguous; candidates: {choices}")))
+        }
     }
 }
 
@@ -263,6 +282,33 @@ mod tests {
         )
         .unwrap();
         assert_eq!(team.score, 100);
+    }
+
+    #[test]
+    fn exact_name_wins_over_longer_prefixes() {
+        let teams = vec![team_info(1, "A Team"), team_info(2, "A Team Academy")];
+        assert_eq!(resolve_team_candidates(&teams, "a team").unwrap(), 1);
+    }
+
+    #[test]
+    fn ambiguous_prefix_reports_candidates() {
+        let teams = vec![team_info(1, "Alpha"), team_info(2, "Alpine")];
+        let error = resolve_team_candidates(&teams, "Al").unwrap_err().to_string();
+        assert!(error.contains("1 (Alpha)"));
+        assert!(error.contains("2 (Alpine)"));
+    }
+
+    fn team_info(id: i64, name: &str) -> TeamInfo {
+        TeamInfo {
+            id,
+            name: name.to_owned(),
+            game_id: 1,
+            token: None,
+            state: 0,
+            institute_id: None,
+            score: 0,
+            tag: None,
+        }
     }
 
     #[tokio::test]

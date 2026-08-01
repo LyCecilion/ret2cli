@@ -19,41 +19,30 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub token: Option<String>,
 
+    /// Control paging for human-readable command output
+    #[arg(long, global = true, value_enum, default_value_t = PagerMode::Auto)]
+    pub pager: PagerMode,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Account authentication and identity
-    Account {
-        #[command(subcommand)]
-        command: AccountCommand,
-    },
     /// Manage local `Ret2Shell` connection profiles
     Profile {
         #[command(subcommand)]
         command: ProfileCommand,
     },
-    /// Browse and select games
+    /// Account authentication and identity
+    Account {
+        #[command(subcommand)]
+        command: AccountCommand,
+    },
+    /// Work with games and their challenges, teams, and submissions
     Game {
         #[command(subcommand)]
         command: GameCommand,
-    },
-    /// Work with challenges in the selected game
-    Challenge {
-        #[command(subcommand)]
-        command: ChallengeCommand,
-    },
-    /// Manage teams in the selected game
-    Team {
-        #[command(subcommand)]
-        command: TeamCommand,
-    },
-    /// View submission history
-    Submission {
-        #[command(subcommand)]
-        command: SubmissionCommand,
     },
     /// Open the interpreter-style interactive shell
     Interactive,
@@ -71,10 +60,14 @@ pub enum AccountCommand {
     Logout,
     /// Register an account on the selected `Ret2Shell` instance
     Register(RegisterArgs),
-    /// Verify the active account session with the server
-    Status,
+    /// Check whether the active session is alive on the server
+    Ping,
     /// Show the active account's server-side profile
     Show,
+    /// Edit the profile description or avatar
+    Edit(AccountEditArgs),
+    /// Generate a sensitive temporary identity code
+    Code(AccountCodeArgs),
     /// Switch the active account within the selected connection profile
     Use { account: String },
     /// Remove a saved account session without contacting the server
@@ -92,10 +85,37 @@ pub enum ProfileCommand {
 
 #[derive(Subcommand, Debug)]
 pub enum GameCommand {
+    /// List available games
     List(GameListArgs),
+    /// Show one game
     Show { game: Option<String> },
-    Use { game: String },
+    /// Save the selected game in the current profile
+    Select { game: String },
+    /// Show the selected game's scoreboard
     Scoreboard(GameContextArgs),
+    /// Work with challenges in the selected game
+    Challenge {
+        #[command(subcommand)]
+        command: ChallengeCommand,
+    },
+    /// Manage teams in the selected game
+    Team {
+        #[command(subcommand)]
+        command: TeamCommand,
+    },
+    /// View submission history
+    Submission {
+        #[command(subcommand)]
+        command: SubmissionCommand,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum PagerMode {
+    #[default]
+    Auto,
+    Always,
+    Never,
 }
 
 #[derive(Subcommand, Debug)]
@@ -115,7 +135,6 @@ pub enum ChallengeCommand {
 pub enum TeamCommand {
     List(GameContextArgs),
     Show(TeamShowArgs),
-    Mine(GameContextArgs),
     Create(TeamCreateArgs),
     Join(TeamJoinArgs),
     Leave(TeamLeaveArgs),
@@ -152,6 +171,42 @@ pub struct AccountRemoveArgs {
     /// Saved account name
     pub account: String,
     /// Skip the confirmation prompt
+    #[arg(long)]
+    pub yes: bool,
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct AccountEditArgs {
+    /// Set the personal introduction directly
+    #[arg(long, conflicts_with = "description_file")]
+    pub description: Option<String>,
+    /// Read the personal introduction from PATH, or stdin with '-'
+    #[arg(long, value_name = "PATH", conflicts_with = "description")]
+    pub description_file: Option<String>,
+    /// Upload a new avatar (maximum 10 MiB)
+    #[arg(long, value_name = "PATH", conflicts_with = "remove_avatar")]
+    pub avatar: Option<std::path::PathBuf>,
+    /// Remove the current avatar
+    #[arg(long, conflicts_with = "avatar")]
+    pub remove_avatar: bool,
+    /// Submit without confirmation
+    #[arg(long)]
+    pub yes: bool,
+}
+
+impl AccountEditArgs {
+    #[must_use]
+    pub fn has_explicit_change(&self) -> bool {
+        self.description.is_some()
+            || self.description_file.is_some()
+            || self.avatar.is_some()
+            || self.remove_avatar
+    }
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct AccountCodeArgs {
+    /// Confirm that the code grants temporary access to your identity
     #[arg(long)]
     pub yes: bool,
 }
@@ -243,9 +298,23 @@ pub struct DownloadArgs {
 
 #[derive(Args, Debug, Clone)]
 pub struct TeamShowArgs {
-    pub team: String,
+    /// Team name as one or more words, a numeric ID, or the reserved word 'mine'
+    #[arg(required = true, num_args = 1..)]
+    pub team: Vec<String>,
     #[arg(long)]
     pub game: Option<String>,
+}
+
+impl TeamShowArgs {
+    #[must_use]
+    pub fn team_name(&self) -> String {
+        self.team.join(" ")
+    }
+
+    #[must_use]
+    pub fn is_mine(&self) -> bool {
+        self.team.len() == 1 && self.team[0].eq_ignore_ascii_case("mine")
+    }
 }
 
 #[derive(Args, Debug, Clone)]
@@ -278,4 +347,13 @@ pub struct CompletionArgs {
     #[arg(value_enum)]
     #[allow(clippy::needless_pass_by_value)]
     pub shell: clap_complete::Shell,
+    /// Write the generated script to a file
+    #[arg(long, value_name = "PATH")]
+    pub output: Option<std::path::PathBuf>,
+    /// Overwrite an existing output file
+    #[arg(long, requires = "output")]
+    pub force: bool,
+    /// Print to an interactive terminal without confirmation
+    #[arg(long)]
+    pub yes: bool,
 }

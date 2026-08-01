@@ -20,7 +20,19 @@ pub struct ConnectionProfile {
     #[serde(default)]
     pub accounts: HashMap<String, AccountSession>,
     #[serde(default)]
-    pub game: Option<String>,
+    pub game: Option<SelectedGame>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SelectedGame {
+    pub id: i64,
+    pub name: String,
+}
+
+impl std::fmt::Display for SelectedGame {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{} ({})", self.id, self.name)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +184,7 @@ mod tests {
         let profile = config.active_profile_mut(None).unwrap();
         profile.store_account("alice".to_owned(), "alice-token".to_owned());
         profile.store_account("bob".to_owned(), "bob-token".to_owned());
+        profile.game = Some(SelectedGame { id: 11, name: "Example CTF".to_owned() });
 
         assert_eq!(profile.active_account.as_deref(), Some("bob"));
         assert_eq!(profile.active_token(), Some("bob-token"));
@@ -182,5 +195,21 @@ mod tests {
         let round_trip: ClientConfig = toml::from_str(&serialized).unwrap();
         assert_eq!(round_trip.profiles["default"].active_token(), Some("alice-token"));
         assert_eq!(round_trip.profiles["default"].accounts.len(), 2);
+        assert_eq!(
+            round_trip.profiles["default"].game,
+            Some(SelectedGame { id: 11, name: "Example CTF".to_owned() })
+        );
+    }
+
+    #[test]
+    fn unreleased_string_game_format_is_rejected() {
+        let old = r#"
+active_profile = "default"
+
+[profiles.default]
+url = "https://example.invalid"
+game = "11"
+"#;
+        assert!(toml::from_str::<ClientConfig>(old).is_err());
     }
 }

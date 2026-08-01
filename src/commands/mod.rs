@@ -5,9 +5,10 @@ pub mod interactive;
 pub mod submission;
 pub mod team;
 
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write};
 
 use dialoguer::{Confirm, Input, Password};
+use tabled::Tabled;
 
 use crate::{
     cli::{CompletionArgs, ProfileAddArgs, ProfileRemoveArgs},
@@ -17,10 +18,57 @@ use crate::{
 };
 
 #[allow(clippy::needless_pass_by_value)]
-pub fn completion(args: CompletionArgs) {
+pub fn completion(args: CompletionArgs, json: bool) -> CliResult<()> {
+    if json {
+        return Err(CliError::Config("completion does not support --json".to_owned()));
+    }
     let mut cmd = <crate::Cli as clap::CommandFactory>::command();
     let name = cmd.get_name().to_owned();
-    clap_complete::generate(args.shell, &mut cmd, name, &mut io::stdout());
+    let mut script = Vec::new();
+    clap_complete::generate(args.shell, &mut cmd, name, &mut script);
+
+    if let Some(path) = args.output.as_deref() {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true);
+        if args.force {
+            options.create(true).truncate(true);
+        } else {
+            options.create_new(true);
+        }
+        let mut file = options.open(path).map_err(|error| {
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                CliError::Config(format!(
+                    "completion output '{}' already exists; pass --force to overwrite it",
+                    path.display()
+                ))
+            } else {
+                CliError::Io(error)
+            }
+        })?;
+        file.write_all(&script)?;
+        file.flush()?;
+        output::success(&format!("Wrote completion script to {}", path.display()));
+        return Ok(());
+    }
+
+    if io::stdout().is_terminal() {
+        output::info(&format!(
+            "Generated {} lines ({} bytes) of {} completion output.",
+            line_count(&script),
+            script.len(),
+            args.shell
+        ));
+        output::flush_before_prompt()?;
+        if !confirm("Print the completion script?", args.yes, false)? {
+            output::info("Aborted");
+            return Ok(());
+        }
+    }
+    output::write_direct(&script)
+}
+
+fn line_count(content: &[u8]) -> usize {
+    String::from_utf8_lossy(content).lines().count()
 }
 
 pub fn require_or_input(value: Option<String>, prompt: &str, json: bool) -> CliResult<String> {
@@ -50,6 +98,7 @@ pub fn confirm(prompt: &str, yes: bool, json: bool) -> CliResult<bool> {
     if json || !io::stdin().is_terminal() {
         return Err(CliError::Config("confirmation required; pass --yes".to_owned()));
     }
+    output::flush_before_prompt()?;
     Confirm::new()
         .with_prompt(prompt)
         .default(false)
@@ -77,11 +126,36 @@ pub fn profile_list(config: &ClientConfig, json: bool) {
             .collect();
         output::print_json(&rows);
     } else {
-        for name in names {
-            let marker = if name == &config.active_profile { "*" } else { " " };
-            let account = config.profiles[name].active_account.as_deref().unwrap_or("anonymous");
-            println!("{marker} {name:<16} {:<24} {account}", config.profiles[name].url);
+        #[derive(Tabled)]
+        struct Row {
+            #[tabled(rename = "Active")]
+            active: &'static str,
+            #[tabled(rename = "Name")]
+            name: String,
+            #[tabled(rename = "URL")]
+            url: String,
+            #[tabled(rename = "Account")]
+            account: String,
+            #[tabled(rename = "Game")]
+            game: String,
         }
+        let rows: Vec<_> = names
+            .into_iter()
+            .map(|name| {
+                let profile = &config.profiles[name];
+                Row {
+                    active: if name == &config.active_profile { "*" } else { "" },
+                    name: name.clone(),
+                    url: profile.url.clone(),
+                    account: profile
+                        .active_account
+                        .clone()
+                        .unwrap_or_else(|| "anonymous".to_owned()),
+                    game: profile.game.as_ref().map_or_else(|| "—".to_owned(), ToString::to_string),
+                }
+            })
+            .collect();
+        output::print_table(&rows);
     }
 }
 
@@ -105,7 +179,7 @@ pub fn profile_show(config: &ClientConfig, name: Option<&str>, json: bool) -> Cl
             ("URL", &profile.url),
             ("Account", profile.active_account.as_deref().unwrap_or("—")),
             ("Saved accounts", &profile.accounts.len().to_string()),
-            ("Game", profile.game.as_deref().unwrap_or("—")),
+            ("Game", &profile.game.as_ref().map_or_else(|| "—".to_owned(), ToString::to_string)),
             ("Status", if profile.active_token().is_some() { "Token stored" } else { "No token" }),
         ]);
     }
@@ -167,4 +241,54 @@ pub fn profile_remove(
         output::success(&format!("Removed profile '{}'", args.name));
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completion_file_creation_is_non_destructive_by_default() {
+        let path = std::env::temp_dir().join(format!(
+            "ret2cli-completion-{}-{}.bash",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let _ = std::fs::remove_file(&path);
+        let args = |force| CompletionArgs {
+            shell: clap_complete::Shell::Bash,
+            output: Some(path.clone()),
+            force,
+            yes: false,
+        };
+        completion(args(false), false).unwrap();
+        let generated = std::fs::read_to_string(&path).unwrap();
+        assert!(generated.contains("_ret2cli"));
+        assert!(completion(args(false), false).unwrap_err().to_string().contains("--force"));
+        completion(args(true), false).unwrap();
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn completion_rejects_json_before_writing() {
+        let error = completion(
+            CompletionArgs {
+                shell: clap_complete::Shell::Bash,
+                output: None,
+                force: false,
+                yes: true,
+            },
+            true,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("does not support --json"));
+    }
+
+    #[test]
+    fn line_count_handles_trailing_newlines() {
+        assert_eq!(line_count(b""), 0);
+        assert_eq!(line_count(b"one"), 1);
+        assert_eq!(line_count(b"one\ntwo\n"), 2);
+    }
 }

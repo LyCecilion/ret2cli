@@ -1,7 +1,15 @@
+use std::{
+    io::{self, IsTerminal, Read},
+    path::Path,
+    time::Instant,
+};
+
+use dialoguer::Editor;
+use reqwest::multipart::{Form, Part};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cli::{AccountRemoveArgs, LoginArgs, RegisterArgs},
+    cli::{AccountCodeArgs, AccountEditArgs, AccountRemoveArgs, LoginArgs, RegisterArgs},
     client::Client,
     commands::{confirm, require_or_input, require_or_password},
     config::ClientConfig,
@@ -21,6 +29,32 @@ struct LoginRequest {
 struct CaptchaResponse {
     id: String,
     challenge: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct AccountProfile {
+    id: i64,
+    registered_at: i64,
+    account: String,
+    nickname: String,
+    email: Option<String>,
+    description: Option<String>,
+    avatar: Option<String>,
+    institute_id: Option<i64>,
+    permissions: serde_json::Value,
+    hidden: bool,
+    banned: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaUpload {
+    hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TemporaryCode {
+    code: u64,
+    generate_at: i64,
 }
 
 pub async fn login(
@@ -105,34 +139,22 @@ pub async fn logout(
     Ok(())
 }
 
-pub async fn status(
+pub async fn ping(
     client: &mut Client,
     config: &mut ClientConfig,
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
     if client.token.is_none() {
-        if json {
-            output::print_json(&serde_json::json!({ "logged_in": false, "url": client.base_url }));
-        } else {
-            output::print_key_value(&[("URL", &client.base_url), ("Status", "Not logged in")]);
-        }
-        return Ok(());
+        return Err(CliError::Authentication("no active session to ping".to_owned()));
     }
-    let profile = client.get_value("account/profile", &[], config, profile_name).await?;
-    let nickname = profile.get("nickname").and_then(|v| v.as_str()).unwrap_or("—");
-    let account = profile.get("account").and_then(|v| v.as_str()).unwrap_or("—");
+    let started = Instant::now();
+    let _: AccountProfile = client.get("account/profile", &[], config, profile_name).await?;
+    let latency_ms = started.elapsed().as_millis();
     if json {
-        output::print_json(&serde_json::json!({
-            "logged_in": true, "url": client.base_url, "account": account, "nickname": nickname,
-        }));
+        output::print_json(&serde_json::json!({ "alive": true, "latency_ms": latency_ms }));
     } else {
-        output::print_key_value(&[
-            ("URL", &client.base_url),
-            ("Status", "Logged in"),
-            ("Account", account),
-            ("Nickname", nickname),
-        ]);
+        output::print_key_value(&[("Status", "Alive"), ("Latency", &format!("{latency_ms} ms"))]);
     }
     Ok(())
 }
@@ -189,11 +211,11 @@ pub fn list(config: &ClientConfig, profile_name: Option<&str>, json: bool) -> Cl
             .collect();
         output::print_json(&rows);
     } else if accounts.is_empty() {
-        println!("No saved accounts.");
+        output::line("No saved accounts.");
     } else {
         for account in accounts {
             let marker = if profile.active_account.as_ref() == Some(account) { "*" } else { " " };
-            println!("{marker} {account}");
+            output::line(&format!("{marker} {account}"));
         }
     }
     Ok(())
@@ -276,30 +298,190 @@ pub async fn show(
     json: bool,
     profile_name: Option<&str>,
 ) -> CliResult<()> {
-    let value = client.get_value("account/profile", &[], config, profile_name).await?;
+    let profile: AccountProfile = client.get("account/profile", &[], config, profile_name).await?;
     if json {
-        output::print_json(&value);
+        output::print_json(&profile);
         return Ok(());
     }
-    let registered = value.get("registered_at").and_then(serde_json::Value::as_i64).map_or_else(
-        || "—".to_owned(),
-        |v| {
-            chrono::DateTime::from_timestamp(v, 0)
-                .map_or_else(|| v.to_string(), |d| d.format("%Y-%m-%d %H:%M UTC").to_string())
-        },
+    let registered = chrono::DateTime::from_timestamp(profile.registered_at, 0).map_or_else(
+        || profile.registered_at.to_string(),
+        |date| date.format("%Y-%m-%d %H:%M UTC").to_string(),
     );
-    let institute = value
-        .get("institute_id")
-        .and_then(serde_json::Value::as_i64)
-        .map_or_else(|| "—".to_owned(), |v| v.to_string());
+    let institute = profile.institute_id.map_or_else(|| "—".to_owned(), |value| value.to_string());
     output::print_key_value(&[
-        ("Account", value.get("account").and_then(|v| v.as_str()).unwrap_or("—")),
-        ("Nickname", value.get("nickname").and_then(|v| v.as_str()).unwrap_or("—")),
-        ("Email", value.get("email").and_then(|v| v.as_str()).unwrap_or("—")),
+        ("Account", &profile.account),
+        ("Nickname", &profile.nickname),
+        ("Email", profile.email.as_deref().unwrap_or("—")),
+        ("Avatar", profile.avatar.as_deref().unwrap_or("—")),
         ("Institute ID", &institute),
         ("Registered", &registered),
     ]);
+    if let Some(description) = profile.description.as_deref().filter(|value| !value.is_empty()) {
+        output::blank();
+        output::print_markdown(description);
+    }
     Ok(())
+}
+
+pub async fn edit(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    args: AccountEditArgs,
+    json: bool,
+    profile_name: Option<&str>,
+) -> CliResult<()> {
+    let explicit = args.has_explicit_change();
+    if !explicit && (json || !io::stdin().is_terminal()) {
+        return Err(CliError::Config(
+            "account edit requires explicit data in JSON or non-TTY mode".to_owned(),
+        ));
+    }
+    let mut profile: AccountProfile =
+        client.get("account/profile", &[], config, profile_name).await?;
+    let old_description = profile.description.clone();
+    let old_avatar = profile.avatar.clone();
+
+    let description = if let Some(value) = args.description.clone() {
+        Some(value)
+    } else if let Some(path) = args.description_file.as_deref() {
+        Some(read_description(path)?)
+    } else if !explicit {
+        let edited = Editor::new()
+            .extension(".md")
+            .edit(profile.description.as_deref().unwrap_or(""))
+            .map_err(|error| CliError::Io(io::Error::other(error)))?;
+        let Some(edited) = edited else {
+            output::info("Aborted");
+            return Ok(());
+        };
+        Some(edited)
+    } else {
+        None
+    };
+    apply_profile_edits(&mut profile, description, args.remove_avatar);
+
+    let description_changed = profile.description != old_description;
+    let avatar_requested = args.avatar.is_some() || profile.avatar != old_avatar;
+    if !description_changed && !avatar_requested {
+        return Err(CliError::Config("no profile changes were provided".to_owned()));
+    }
+
+    if description_changed {
+        output::info("Personal introduction preview:");
+        if let Some(description) = profile.description.as_deref() {
+            output::print_markdown(description);
+        } else {
+            output::line("(empty)");
+        }
+    }
+    if let Some(path) = args.avatar.as_deref() {
+        validate_avatar(path)?;
+        output::info(&format!("Avatar: upload {}", path.display()));
+    } else if args.remove_avatar {
+        output::info("Avatar: remove current avatar");
+    }
+    if !confirm("Submit these profile changes?", args.yes, json)? {
+        output::info("Aborted");
+        return Ok(());
+    }
+
+    if let Some(path) = args.avatar.as_deref() {
+        profile.avatar = Some(upload_avatar(client, config, profile_name, path).await?);
+    }
+    client.patch_no_body("account/profile", &profile, config, profile_name).await?;
+    if json {
+        output::print_json(&profile);
+    } else {
+        output::success("Profile updated");
+    }
+    Ok(())
+}
+
+pub async fn code(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    args: AccountCodeArgs,
+    json: bool,
+    profile_name: Option<&str>,
+) -> CliResult<()> {
+    if !confirm(
+        "Generate a temporary identity code? Anyone with it can access your identity for 5 minutes.",
+        args.yes,
+        json,
+    )? {
+        output::info("Aborted");
+        return Ok(());
+    }
+    let response: TemporaryCode = client.post("account/code", &(), config, profile_name).await?;
+    let code = format_temporary_code(response.code);
+    let expires_at = response.generate_at + 300;
+    if json {
+        output::print_json(&serde_json::json!({
+            "code": code,
+            "generate_at": response.generate_at,
+            "expires_at": expires_at,
+        }));
+    } else {
+        let expiry = chrono::DateTime::from_timestamp(expires_at, 0).map_or_else(
+            || expires_at.to_string(),
+            |date| date.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        );
+        output::print_key_value(&[("Code", &code), ("Expires", &expiry)]);
+    }
+    Ok(())
+}
+
+fn apply_profile_edits(
+    profile: &mut AccountProfile,
+    description: Option<String>,
+    remove_avatar: bool,
+) {
+    if let Some(description) = description {
+        profile.description = (!description.is_empty()).then_some(description);
+    }
+    if remove_avatar {
+        profile.avatar = None;
+    }
+}
+
+fn format_temporary_code(code: u64) -> String {
+    format!("{code:06X}")
+}
+
+fn read_description(path: &str) -> CliResult<String> {
+    if path == "-" {
+        let mut content = String::new();
+        io::stdin().read_to_string(&mut content)?;
+        Ok(content)
+    } else {
+        std::fs::read_to_string(path).map_err(CliError::Io)
+    }
+}
+
+fn validate_avatar(path: &Path) -> CliResult<()> {
+    const MAX_AVATAR_SIZE: u64 = 10 * 1024 * 1024;
+    let metadata = std::fs::metadata(path)?;
+    if !metadata.is_file() {
+        return Err(CliError::Config(format!("avatar is not a file: {}", path.display())));
+    }
+    if metadata.len() > MAX_AVATAR_SIZE {
+        return Err(CliError::Config("avatar exceeds the server's 10 MiB limit".to_owned()));
+    }
+    Ok(())
+}
+
+async fn upload_avatar(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    path: &Path,
+) -> CliResult<String> {
+    let bytes = tokio::fs::read(path).await?;
+    let file_name =
+        path.file_name().and_then(|value| value.to_str()).unwrap_or("avatar").to_owned();
+    let form = Form::new().part("file", Part::bytes(bytes).file_name(file_name));
+    let upload: MediaUpload = client.post_multipart("media", form, config, profile_name).await?;
+    Ok(upload.hash)
 }
 
 fn solve_pow(challenge: &str) -> String {
@@ -318,12 +500,230 @@ fn solve_pow(challenge: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
     #[test]
     fn pow_answer_keeps_seed_and_meets_difficulty() {
         let answer = super::solve_pow("2#seed");
         let digest = ring::digest::digest(&ring::digest::SHA256, answer.as_bytes());
         assert!(answer.starts_with("seed"));
         assert!(hex::encode(digest).starts_with("00"));
+    }
+
+    #[test]
+    fn profile_edits_preserve_protected_fields() {
+        let mut profile: AccountProfile = serde_json::from_str(
+            r#"{
+                "id":7,"registered_at":1,"account":"alice","nickname":"Alice",
+                "email":"alice@example.com","description":"old","avatar":"old-hash",
+                "institute_id":3,"permissions":[0,1],"hidden":false,"banned":false
+            }"#,
+        )
+        .unwrap();
+        let protected = (
+            profile.id,
+            profile.registered_at,
+            profile.account.clone(),
+            profile.nickname.clone(),
+            profile.email.clone(),
+            profile.institute_id,
+            profile.permissions.clone(),
+            profile.hidden,
+            profile.banned,
+        );
+        apply_profile_edits(&mut profile, Some("# New introduction".to_owned()), true);
+        assert_eq!(profile.description.as_deref(), Some("# New introduction"));
+        assert_eq!(profile.avatar, None);
+        assert_eq!(
+            protected,
+            (
+                profile.id,
+                profile.registered_at,
+                profile.account,
+                profile.nickname,
+                profile.email,
+                profile.institute_id,
+                profile.permissions,
+                profile.hidden,
+                profile.banned,
+            )
+        );
+    }
+
+    #[test]
+    fn temporary_codes_are_uppercase_six_digit_hex() {
+        assert_eq!(format_temporary_code(0), "000000");
+        assert_eq!(format_temporary_code(0xAB_CDEF), "ABCDEF");
+    }
+
+    #[tokio::test]
+    async fn ping_requires_a_session_without_contacting_the_server() {
+        let mut client = Client::new("https://example.invalid", None).unwrap();
+        let mut config = ClientConfig::default();
+        let error = ping(&mut client, &mut config, true, None).await.unwrap_err();
+        assert_eq!(error.exit_code(), 2);
+    }
+
+    #[tokio::test]
+    async fn non_tty_edit_requires_explicit_changes() {
+        let mut client = Client::new("https://example.invalid", Some("token".to_owned())).unwrap();
+        let mut config = ClientConfig::default();
+        let error = edit(&mut client, &mut config, AccountEditArgs::default(), true, None)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("explicit data"));
+    }
+
+    #[tokio::test]
+    async fn ping_validates_the_session_with_profile_get() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_request(&mut socket).await;
+            assert!(request.starts_with("GET /api/account/profile "));
+            assert!(request.contains("authorization: Bearer token"));
+            respond_json(
+                &mut socket,
+                r#"{"id":7,"registered_at":1,"account":"alice","nickname":"Alice","email":"alice@example.com","description":null,"avatar":null,"institute_id":null,"permissions":[0,1],"hidden":false,"banned":false}"#,
+            )
+            .await;
+        });
+        let mut config = ClientConfig::default();
+        config.active_profile_mut(None).unwrap().url = format!("http://{address}");
+        let mut client =
+            Client::new(&format!("http://{address}"), Some("token".to_owned())).unwrap();
+        ping(&mut client, &mut config, true, None).await.unwrap();
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn temporary_code_uses_the_generation_endpoint() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_request(&mut socket).await;
+            assert!(request.starts_with("POST /api/account/code "));
+            respond_json(&mut socket, r#"{"code":11259375,"generate_at":1000}"#).await;
+        });
+        let mut config = ClientConfig::default();
+        config.active_profile_mut(None).unwrap().url = format!("http://{address}");
+        let mut client =
+            Client::new(&format!("http://{address}"), Some("token".to_owned())).unwrap();
+        code(&mut client, &mut config, AccountCodeArgs { yes: true }, true, None).await.unwrap();
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn avatar_edit_uses_multipart_and_preserves_protected_profile_fields() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let profile = r#"{"id":7,"registered_at":1,"account":"alice","nickname":"Alice","email":"alice@example.com","description":"old","avatar":"old-hash","institute_id":3,"permissions":[0,1],"hidden":false,"banned":false}"#;
+
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_request(&mut socket).await;
+            assert!(request.starts_with("GET /api/account/profile "));
+            respond_json(&mut socket, profile).await;
+
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_request(&mut socket).await;
+            assert!(request.starts_with("POST /api/media "));
+            assert!(request.contains("multipart/form-data"));
+            assert!(request.contains("name=\"file\""));
+            assert!(request.contains("avatar-bytes"));
+            respond_json(&mut socket, r#"{"id":1,"hash":"new-hash","uploader_id":7}"#).await;
+
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_request(&mut socket).await;
+            assert!(request.starts_with("PATCH /api/account/profile "));
+            let body = request.split_once("\r\n\r\n").unwrap().1;
+            let patched: serde_json::Value = serde_json::from_str(body).unwrap();
+            assert_eq!(patched["account"], "alice");
+            assert_eq!(patched["nickname"], "Alice");
+            assert_eq!(patched["email"], "alice@example.com");
+            assert_eq!(patched["institute_id"], 3);
+            assert_eq!(patched["permissions"], serde_json::json!([0, 1]));
+            assert_eq!(patched["description"], "# Updated");
+            assert_eq!(patched["avatar"], "new-hash");
+            respond_empty(&mut socket).await;
+        });
+
+        let avatar = std::env::temp_dir().join(format!(
+            "ret2cli-avatar-{}-{}",
+            std::process::id(),
+            address.port()
+        ));
+        std::fs::write(&avatar, b"avatar-bytes").unwrap();
+        let mut config = ClientConfig::default();
+        config.active_profile_mut(None).unwrap().url = format!("http://{address}");
+        let mut client =
+            Client::new(&format!("http://{address}"), Some("token".to_owned())).unwrap();
+        edit(
+            &mut client,
+            &mut config,
+            AccountEditArgs {
+                description: Some("# Updated".to_owned()),
+                avatar: Some(avatar.clone()),
+                yes: true,
+                ..AccountEditArgs::default()
+            },
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+        server.await.unwrap();
+        std::fs::remove_file(avatar).unwrap();
+    }
+
+    async fn read_request(socket: &mut tokio::net::TcpStream) -> String {
+        let mut bytes = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        let mut expected = None;
+        loop {
+            let read = socket.read(&mut buffer).await.unwrap();
+            if read == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&buffer[..read]);
+            if expected.is_none()
+                && let Some(header_end) = bytes.windows(4).position(|window| window == b"\r\n\r\n")
+            {
+                let headers = String::from_utf8_lossy(&bytes[..header_end]);
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length: ")
+                            .and_then(|value| value.parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                expected = Some(header_end + 4 + length);
+            }
+            if expected.is_some_and(|length| bytes.len() >= length) {
+                break;
+            }
+        }
+        String::from_utf8(bytes).unwrap()
+    }
+
+    async fn respond_json(socket: &mut tokio::net::TcpStream, body: &str) {
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+    }
+
+    async fn respond_empty(socket: &mut tokio::net::TcpStream) {
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+            .await
+            .unwrap();
     }
 }
