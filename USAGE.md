@@ -21,18 +21,19 @@ ret2cli
 ret2cli interactive
 ```
 
-启动后会显示 `>>>` 提示符。直接输入 one-line 命令时省略开头的 `ret2cli` 即可，也可以原样粘贴包含 `ret2cli` 的命令：
+启动后会显示 `账号@profile:比赛ID $` 形式的彩色动态提示符。未登录时账号为 `anonymous`，未选择比赛时比赛为 `none`。直接输入 one-line 命令时省略开头的 `ret2cli` 即可，也可以原样粘贴包含 `ret2cli` 的命令：
 
 ```text
 Ret2CLI 0.1.0 interactive shell
 Type "help" for commands, "context" for the active context, or "exit" to leave.
-profile=default  account=alice  game=11 (MoeCTF 2026)
->>> game list
->>> game challenge show phptrick
->>> game challenge submit phptrick --flag 'flag{...}'
->>> ret2cli game submission list
->>> exit
+alice@default:11 $ game list
+alice@default:11 $ game challenge show phptrick
+alice@default:11 $ game challenge submit phptrick --flag 'flag{...}'
+alice@default:11 $ ret2cli game submission list
+alice@default:11 $ exit
 ```
+
+提示符分别对账号、profile 和比赛分段着色（设置 `NO_COLOR` 或使用 `TERM=dumb` 时自动关闭），并在每条命令完成后根据当前内存配置重新生成；因此 `profile use`、`account use/login/logout` 和 `game select` 会立即反映到下一行。比赛名称可能很长或包含空格，所以提示符只显示 ID；`context` 可查看完整的 ID 与名称。这里展示的是本地选中的上下文，不代表服务器已经验证 session，在线状态仍应使用 `account ping` 检查。
 
 命令参数支持 shell 风格的单引号、双引号和反斜杠转义，但不会执行管道、重定向或其他 shell 语法。交互模式提供当前进程内的方向键历史与行编辑，不会把包含 flag、token 或密码的历史落盘。
 

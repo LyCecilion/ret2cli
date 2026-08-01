@@ -1,7 +1,10 @@
-use std::io;
+use std::{borrow::Cow, env, io};
 
 use clap::{CommandFactory, Parser};
-use rustyline::{DefaultEditor, error::ReadlineError};
+use rustyline::{
+    Editor, Helper, completion::Completer, error::ReadlineError, highlight::Highlighter,
+    hint::Hinter, history::DefaultHistory, validate::Validator,
+};
 
 use crate::{
     Cli,
@@ -9,7 +12,37 @@ use crate::{
     error::{CliError, CliResult},
 };
 
-const PROMPT: &str = ">>> ";
+#[derive(Debug)]
+struct ReplPrompt {
+    plain: String,
+    colored: String,
+}
+
+#[derive(Debug, Default)]
+struct PromptHighlighter {
+    colored_prompt: String,
+}
+
+impl Completer for PromptHighlighter {
+    type Candidate = String;
+}
+
+impl Hinter for PromptHighlighter {
+    type Hint = String;
+}
+
+impl Highlighter for PromptHighlighter {
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
+        &'s self,
+        _prompt: &'p str,
+        _default: bool,
+    ) -> Cow<'b, str> {
+        Cow::Borrowed(&self.colored_prompt)
+    }
+}
+
+impl Validator for PromptHighlighter {}
+impl Helper for PromptHighlighter {}
 
 #[derive(Debug)]
 enum ReplAction {
@@ -45,10 +78,12 @@ pub async fn run(
     }
 
     print_banner(config)?;
-    let mut editor = DefaultEditor::new().map_err(readline_error)?;
+    let mut editor = Editor::<PromptHighlighter, DefaultHistory>::new().map_err(readline_error)?;
 
     loop {
-        match editor.readline(PROMPT) {
+        let prompt = build_prompt(config)?;
+        editor.set_helper(Some(PromptHighlighter { colored_prompt: prompt.colored }));
+        match editor.readline(&prompt.plain) {
             Ok(line) => {
                 let trimmed = line.trim();
                 if !trimmed.is_empty() {
@@ -133,13 +168,41 @@ fn print_banner(config: &ClientConfig) -> CliResult<()> {
     println!(
         "Type \"help\" for commands, \"context\" for the active context, or \"exit\" to leave."
     );
-    print_context(config)?;
     if config.active_profile_resolved(None)?.url.is_empty() {
         println!(
             "No server URL is configured. Start with `profile add ... --use-now` or `account login --url ...`."
         );
     }
     Ok(())
+}
+
+fn build_prompt(config: &ClientConfig) -> CliResult<ReplPrompt> {
+    let profile_name = config.active_profile_name(None)?;
+    let profile = config.active_profile_resolved(None)?;
+    let account = sanitize_prompt_segment(profile.active_account.as_deref().unwrap_or("anonymous"));
+    let profile_name = sanitize_prompt_segment(&profile_name);
+    let game = profile.game.as_ref().map_or_else(|| "none".to_owned(), |game| game.id.to_string());
+    let plain = format!("{account}@{profile_name}:{game} $ ");
+    let colored = if colors_enabled() {
+        format!(
+            "\x1b[1;32m{account}\x1b[0m\x1b[90m@\x1b[0m\x1b[1;36m{profile_name}\x1b[0m\x1b[90m:\x1b[0m\x1b[1;35m{game}\x1b[0m \x1b[1;90m$\x1b[0m "
+        )
+    } else {
+        plain.clone()
+    };
+    Ok(ReplPrompt { plain, colored })
+}
+
+fn colors_enabled() -> bool {
+    env::var_os("NO_COLOR").is_none()
+        && match env::var("TERM") {
+            Ok(term) => term != "dumb",
+            Err(_) => true,
+        }
+}
+
+fn sanitize_prompt_segment(value: &str) -> String {
+    value.chars().map(|character| if character.is_control() { '?' } else { character }).collect()
 }
 
 fn print_context(config: &ClientConfig) -> CliResult<()> {
@@ -228,5 +291,40 @@ mod tests {
     #[test]
     fn reports_unclosed_quotes_without_exiting() {
         assert!(matches!(parse_line("team show 'unfinished"), Err(ReplParseError::Arguments(_))));
+    }
+
+    #[test]
+    fn prompt_tracks_the_current_account_profile_and_game() {
+        let mut config = ClientConfig::default();
+        assert_eq!(build_prompt(&config).unwrap().plain, "anonymous@default:none $ ");
+
+        let profile = config.active_profile_mut(None).unwrap();
+        profile.active_account = Some("stellalyRin".to_owned());
+        profile.game = Some(crate::config::SelectedGame { id: 31, name: "MoeCTF 2026".to_owned() });
+        assert_eq!(build_prompt(&config).unwrap().plain, "stellalyRin@default:31 $ ");
+
+        config.profiles.insert(
+            "school".to_owned(),
+            crate::config::ConnectionProfile::new("https://ctf.example".to_owned()),
+        );
+        config.active_profile = "school".to_owned();
+        assert_eq!(build_prompt(&config).unwrap().plain, "anonymous@school:none $ ");
+    }
+
+    #[test]
+    fn colored_prompt_keeps_every_context_segment_visible() {
+        let mut config = ClientConfig::default();
+        let profile = config.active_profile_mut(None).unwrap();
+        profile.active_account = Some("alice".to_owned());
+        profile.game = Some(crate::config::SelectedGame { id: 7, name: "Game".to_owned() });
+        let prompt = build_prompt(&config).unwrap();
+        for segment in ["alice", "@", "default", ":", "7", "$"] {
+            assert!(prompt.colored.contains(segment));
+        }
+    }
+
+    #[test]
+    fn prompt_segments_cannot_inject_terminal_controls() {
+        assert_eq!(sanitize_prompt_segment("safe\n\u{1b}[31m"), "safe??[31m");
     }
 }
