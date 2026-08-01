@@ -27,19 +27,29 @@ use crate::{
 /// or network errors from API commands.
 pub async fn run(cli: Cli) -> CliResult<()> {
     let mut config = ClientConfig::load()?;
-    let json = cli.json;
-    let profile_override = cli.profile.clone();
-    let profile_name = profile_override.as_deref();
-
-    match cli.command {
-        None => {
-            if !std::io::stdin().is_terminal() || json {
-                return Err(CliError::Config("no command specified; use --help".to_owned()));
-            }
-            return commands::interactive::run(&mut config, profile_name).await;
+    let interactive = matches!(cli.command, None | Some(Commands::Interactive));
+    if interactive {
+        if cli.json {
+            return Err(CliError::Config("interactive mode does not support --json".to_owned()));
         }
+        if !std::io::stdin().is_terminal() {
+            return Err(CliError::Config("interactive mode requires a TTY".to_owned()));
+        }
+        return commands::interactive::run(&mut config, cli.profile.as_deref(), cli.url, cli.token)
+            .await;
+    }
+
+    run_in_session(cli, &mut config).await
+}
+
+pub(crate) async fn run_in_session(cli: Cli, config: &mut ClientConfig) -> CliResult<()> {
+    let Cli { json, profile, url, token, command } = cli;
+    let profile_name = profile.as_deref();
+
+    match command {
+        None => Err(CliError::Config("no command specified; use help".to_owned())),
         Some(Commands::Interactive) => {
-            return commands::interactive::run(&mut config, profile_name).await;
+            Err(CliError::Config("already in interactive mode".to_owned()))
         }
         Some(Commands::Completion(args)) => {
             commands::completion(args);
@@ -47,27 +57,27 @@ pub async fn run(cli: Cli) -> CliResult<()> {
         }
         Some(Commands::Profile { command }) => match command {
             ProfileCommand::List => {
-                commands::profile_list(&config, json);
+                commands::profile_list(config, json);
                 Ok(())
             }
-            ProfileCommand::Show { name } => commands::profile_show(&config, name.as_deref(), json),
-            ProfileCommand::Add(args) => commands::profile_add(&mut config, &args, json),
-            ProfileCommand::Use { name } => commands::profile_use(&mut config, &name, json),
-            ProfileCommand::Remove(args) => commands::profile_remove(&mut config, &args, json),
+            ProfileCommand::Show { name } => commands::profile_show(config, name.as_deref(), json),
+            ProfileCommand::Add(args) => commands::profile_add(config, &args, json),
+            ProfileCommand::Use { name } => commands::profile_use(config, &name, json),
+            ProfileCommand::Remove(args) => commands::profile_remove(config, &args, json),
         },
         Some(Commands::Account { command: AccountCommand::List }) => {
-            commands::auth::list(&config, profile_name, json)
+            commands::auth::list(config, profile_name, json)
         }
         Some(Commands::Account { command: AccountCommand::Use { account } }) => {
-            commands::auth::use_account(&mut config, profile_name, &account, json)
+            commands::auth::use_account(config, profile_name, &account, json)
         }
         Some(Commands::Account { command: AccountCommand::Remove(args) }) => {
-            commands::auth::remove(&mut config, profile_name, &args, json)
+            commands::auth::remove(config, profile_name, &args, json)
         }
         command => {
             let cmd =
                 command.ok_or_else(|| CliError::Config("unexpected command state".to_owned()))?;
-            dispatch_network(cmd, cli.url, cli.token, &mut config, profile_name, json).await
+            dispatch_network(cmd, url, token, config, profile_name, json).await
         }
     }
 }
@@ -312,6 +322,50 @@ mod tests {
             Some(Commands::Account { command: AccountCommand::Remove(args) })
                 if args.account == "alt" && args.yes
         ));
+    }
+
+    #[test]
+    fn every_user_workflow_has_a_one_line_command() {
+        let commands = [
+            "profile list",
+            "profile show default",
+            "profile add school --url https://ctf.example/ --use-now",
+            "profile use default",
+            "profile remove school --yes",
+            "account list",
+            "account login --account alice --password secret",
+            "account logout",
+            "account register --account alice --nickname Alice --email alice@example.com --password secret",
+            "account status",
+            "account show",
+            "account use alice",
+            "account remove alice --yes",
+            "game list --type training",
+            "game show 11",
+            "game use 11",
+            "game scoreboard",
+            "challenge list",
+            "challenge show pwn",
+            "challenge submit pwn --flag flag{test}",
+            "challenge hints pwn",
+            "challenge unlock-hint pwn --id 3",
+            "challenge start pwn",
+            "challenge stop pwn",
+            "challenge files pwn",
+            "challenge download pwn --file attachment.zip --output task.zip",
+            "team list",
+            "team show example",
+            "team mine",
+            "team create --name example --tag TEST",
+            "team join invitation-token",
+            "team leave --yes",
+            "submission list",
+        ];
+
+        for command in commands {
+            let args = std::iter::once("ret2cli").chain(command.split_ascii_whitespace());
+            assert!(Cli::try_parse_from(args).is_ok(), "one-line command did not parse: {command}");
+        }
     }
 
     #[test]
