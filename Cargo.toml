@@ -31,6 +31,8 @@ dialoguer = "0.11"
 indicatif = "0.17"
 futures-util = "0.3"
 clap_complete = "4"
+rustyline = { version = "16", default-features = false }
+shell-words = "1"
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -1,6 +1,6 @@
 # ret2cli 使用指南
 
-`ret2cli` 是 Ret2Shell CTF 平台的终端客户端，既支持可脚本化的子命令，也提供方向键操作的交互界面。
+`ret2cli` 是 Ret2Shell CTF 平台的终端客户端，既支持可脚本化的 one-line 子命令，也提供类似 Python 解释器的交互式命令提示符。两种方式使用同一套命令语法和执行逻辑。
 
 ## 构建
 
@@ -12,7 +12,7 @@ cargo build --release
 
 开发时可以用 `cargo run -- <参数>` 代替已安装的 `ret2cli`。
 
-## 交互界面
+## 交互式命令提示符
 
 在终端中直接运行以下任意一条命令：
 
@@ -21,7 +21,31 @@ ret2cli
 ret2cli interactive
 ```
 
-首次启动会询问 Ret2Shell 地址。登录后可从菜单完成 profile 与账号切换、比赛选择、查看题目、提交 flag、Hint、实例、附件、队伍和提交记录等操作。
+启动后会显示 `>>>` 提示符。直接输入 one-line 命令时省略开头的 `ret2cli` 即可，也可以原样粘贴包含 `ret2cli` 的命令：
+
+```text
+Ret2CLI 0.1.0 interactive shell
+Type "help" for commands, "context" for the active context, or "exit" to leave.
+profile=default  account=alice  game=11
+>>> game list
+>>> challenge show phptrick
+>>> challenge submit phptrick --flag 'flag{...}'
+>>> ret2cli submission list
+>>> exit
+```
+
+命令参数支持 shell 风格的单引号、双引号和反斜杠转义，但不会执行管道、重定向或其他 shell 语法。交互模式提供当前进程内的方向键历史与行编辑，不会把包含 flag、token 或密码的历史落盘。
+
+交互内置命令：
+
+- `help`：显示完整命令树；
+- `help challenge submit`：显示指定命令的帮助；
+- `context`：显示当前 profile、账号和比赛；
+- `exit`、`quit`、`exit()`、`quit()`：退出；
+- `Ctrl-C`：取消当前输入并回到提示符；
+- `Ctrl-D`：退出。
+
+首次使用时，可在提示符内通过 `profile add <名称> --url <地址> --use-now` 建立 profile，或直接执行 `account login --url <地址> --account <账号>`，成功登录时 URL 会绑定到当前空 profile。
 
 裸跑只在 TTY 中进入交互界面；管道或脚本中未指定子命令会直接失败，不会等待输入。
 
@@ -133,7 +157,7 @@ ret2cli challenge download phptrick --file attachment.zip
 ret2cli challenge download phptrick --file attachment.zip --output ./task.zip
 ```
 
-交互界面支持从附件列表中多选。客户端会分别下载 static/mapped 文件，不会把附件列表 JSON 冒充 ZIP 文件保存。
+客户端会分别下载 static/mapped 文件，不会把附件列表 JSON 冒充 ZIP 文件保存。未指定 `--file` 会下载全部附件；若要挑选多个附件，可分别执行多条 `challenge download ... --file ...`。
 
 ### 队伍
 

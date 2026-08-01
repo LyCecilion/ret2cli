@@ -55,7 +55,7 @@ pub enum Commands {
         #[command(subcommand)]
         command: SubmissionCommand,
     },
-    /// Open the guided interactive interface
+    /// Open the interpreter-style interactive shell
     Interactive,
     /// Generate shell completions
     Completion(CompletionArgs),
