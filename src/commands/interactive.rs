@@ -5,6 +5,7 @@ use rustyline::{
     Editor, Helper, completion::Completer, error::ReadlineError, highlight::Highlighter,
     hint::Hinter, history::DefaultHistory, validate::Validator,
 };
+use unicode_width::UnicodeWidthStr;
 
 use crate::{
     Cli,
@@ -251,7 +252,12 @@ fn context_text(config: &ClientConfig) -> CliResult<String> {
 }
 
 fn pad_segment(value: &str, width: usize) -> String {
-    if value.len() >= width { format!("{value}  ") } else { format!("{value:<width$}") }
+    let display_width = UnicodeWidthStr::width(value);
+    if display_width >= width {
+        format!("{value}  ")
+    } else {
+        format!("{value}{}", " ".repeat(width - display_width))
+    }
 }
 
 fn print_context(config: &ClientConfig) -> CliResult<()> {
@@ -428,6 +434,13 @@ mod tests {
         let text = context_text(&config).unwrap();
         let lines: Vec<_> = text.lines().collect();
         assert_eq!(lines[1], "account=stellalyRin  email=ly@example.com");
+    }
+
+    #[test]
+    fn context_alignment_uses_terminal_width_for_unicode() {
+        let padded = pad_segment("profile=洛汐", 18);
+        assert_eq!(UnicodeWidthStr::width(padded.as_str()), 18);
+        assert!(padded.ends_with("      "));
     }
 
     #[test]

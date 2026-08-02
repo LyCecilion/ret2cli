@@ -41,7 +41,7 @@ alice@default:11 $ exit
 
 - `help`：显示完整命令树；
 - `help game challenge submit`：显示指定命令的帮助；
-- `context`：分三行显示当前上下文——profile（含 URL）、账号（含本地缓存的邮箱）和比赛（完整 ID 与名称）；
+- `context`：分三行显示当前上下文——profile（含 URL）、账号（含本地缓存的邮箱）和比赛（完整 ID 与名称）；字段按终端显示宽度对齐，支持中文等宽字符；
 - `exit`、`quit`、`exit()`、`quit()`：退出；
 - `Ctrl-C`：取消当前输入并回到提示符；
 - `Ctrl-D`：退出。
