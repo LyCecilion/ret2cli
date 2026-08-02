@@ -42,7 +42,7 @@ src/
 build.rs             codename selection + GitHub Actions build metadata
 release.rs           tested major.minor release-line codename mapping
 dist-workspace.toml  cargo-dist targets and GitHub Release configuration
-release-plz.toml     SemVer updates in git-only mode
+release-plz.toml     SemVer updates and crates.io publishing
 .github/workflows/   release-plz orchestration + generated cargo-dist release CI
 ```
 
@@ -54,7 +54,7 @@ release-plz.toml     SemVer updates in git-only mode
 - **Output**: human-readable output goes through `output::` (buffered + paged); with `--json` stdout emits exactly one JSON value; download progress must not mix into stdout
 - **Security constraints**: `unsafe_code = forbid`; `--url` overrides must not carry the profile's token (prevents credential leaks across instances); REPL history must never be written to disk (flag/token leaks)
 - **Testing**: new behavior must have unit test coverage; prefer extracting pure functions for testability (e.g. `resolve_team_candidates`, `build_pager_candidates`); network paths are verified with tokio mocks or a local mock server
-- **Releases**: `develop` remains the GitHub default branch so release-plz version PRs target it; `release/*` merges to `main`, where cargo-dist creates git-only releases for Windows, Linux, and macOS
+- **Releases**: `develop` remains the GitHub default branch so release-plz version PRs target it; `release/*` merges to `main`, where release-plz publishes crates.io before cargo-dist creates Windows, Linux, and macOS GitHub Releases
 
 ## Before touching API behavior
 

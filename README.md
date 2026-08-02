@@ -57,6 +57,12 @@ agg --text-font-family "Maple Mono NF CN" --font-size 20 --line-height 1.2 --spe
 
 你可以手动安装 Ret2CLI。从 [Releases](https://github.com/LyCecilion/ret2cli/releases) 中取得 Windows x86_64、Linux x86_64/AArch64 或 macOS Intel/Apple Silicon 的压缩包后，可以直接使用其中的二进制文件或将其加入 PATH。
 
+已经安装 Rust 工具链的用户也可以从 crates.io 安装：
+
+```bash
+cargo install ret2cli --locked
+```
+
 你也可以自行从源码编译。在你的设备上 [配置 Rust 开发环境](https://doc.rust-lang.org/book/ch01-01-installation.html) 后，使用 `cargo build` 编译：
 
 ```bash
@@ -149,7 +155,7 @@ ret2cli/
 ├── AGENTS.md            AI 助手项目说明
 ├── flake.nix            Nix 开发环境与 ret2cli 包输出
 ├── dist-workspace.toml  GitHub Release 构建目标
-├── release-plz.toml     SemVer 与 git-only 发布策略
+├── release-plz.toml     SemVer 与 crates.io 发布策略
 ├── Cargo.lock           发布构建的依赖版本锁定
 ├── deny.toml            依赖许可审查
 └── LICENSE              MIT
@@ -170,7 +176,7 @@ ret2cli/
 | `dist plan --tag vX.Y.Z` | 检查多平台发布计划 |
 | `dist generate --check` | 检查 cargo-dist 工作流是否为最新生成结果 |
 
-正式发布采用 `main` / `develop` 双长期分支：release-plz 在默认分支 `develop` 维护版本 PR，`release/*` 合入 `main` 后由 cargo-dist 创建 tag、GitHub Release 及 Windows、Linux、macOS 附件。该流程为 git-only，不发布 crates.io，也暂不生成 Winget、Scoop 或 Homebrew 安装器。详见 [CONTRIBUTING](./CONTRIBUTING.md)。
+正式发布采用 `main` / `develop` 双长期分支：release-plz 在默认分支 `develop` 维护版本 PR；`release/*` 合入 `main` 后先发布 crates.io，再由 cargo-dist 创建同版本 tag、GitHub Release 及 Windows、Linux、macOS 附件。暂不生成 Winget、Scoop 或 Homebrew 安装器。详见 [CONTRIBUTING](./CONTRIBUTING.md)。
 
 同一 `major.minor` 发布线共享 codename；v1.0.x 为 **LORELEI**。正式 CI 编译的程序版本还会附加 `+build.<run_number>.<run_attempt>.g<short_sha>`，tag 与 Cargo.toml 则保持纯 SemVer。
 

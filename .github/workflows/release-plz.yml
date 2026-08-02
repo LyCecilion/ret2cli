@@ -31,6 +31,7 @@ jobs:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Build and publish GitHub Release artifacts
         if: ${{ steps.release-plz.outputs.releases_created == 'true' }}
         shell: bash

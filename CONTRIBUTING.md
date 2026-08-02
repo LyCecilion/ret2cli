@@ -64,19 +64,23 @@ git push origin feat/<name>
 
 ### 5. 发布流程
 
-Ret2CLI 遵循 SemVer。`release-plz` 读取 Conventional Commits、维护版本与 CHANGELOG Release PR；`cargo-dist` 创建 tag、GitHub Release 和三端二进制附件。项目启用了 `git_only`，永远不会由该流程发布到 crates.io。
+Ret2CLI 遵循 SemVer。`release-plz` 读取 Conventional Commits、维护版本与 CHANGELOG Release PR，并先将发布版本上传到 crates.io；`cargo-dist` 随后创建同版本的 tag、GitHub Release 和三端二进制附件。
 
-首次配置仓库时，维护者需要在 GitHub 的 Actions 设置中启用 **Allow GitHub Actions to create and approve pull requests**。无需配置 `CARGO_REGISTRY_TOKEN`。
+首次配置仓库时，维护者需要：
+
+1. 保持 GitHub 默认分支为 `develop`，因为 release-plz 固定向默认分支创建版本 PR；
+2. 在 Actions 设置中启用 **Allow GitHub Actions to create and approve pull requests**；
+3. 创建具备 crates.io `publish-new` 与 `publish-update` 权限的 API token，并保存为 Actions secret `CARGO_REGISTRY_TOKEN`。
 
 日常发布流程如下：
 
 1. 变更合入 `develop` 后，`.github/workflows/release-plz.yml` 创建或更新面向 `develop` 的版本 PR。
 2. 维护者审阅版本号和 CHANGELOG。同一 `major.minor` 发布线共用一个 codename；首次提升 minor 或 major 时，必须同时更新 `release.rs` 的映射、`dist-workspace.toml` 的展示名和 CHANGELOG 文案，否则构建会拒绝未知发布线。
 3. 版本 PR 合入 `develop` 后，从该提交切出 `release/vX.Y.Z`，完成最终验证并向 `main` 发起 PR。发布分支如有新修订，发布后也要合回或逐项 backport 到 `develop`。
-4. 发布 PR 合入 `main` 后，release-plz 计算待发布的 `vX.Y.Z`，但不自行创建 tag 或 GitHub Release；随后通过 `workflow_dispatch` 调用 cargo-dist 工作流。
+4. 发布 PR 合入 `main` 后，release-plz 将 `X.Y.Z` 发布到 crates.io，计算对应的 `vX.Y.Z`，但不自行创建 tag 或 GitHub Release；随后通过 `workflow_dispatch` 调用 cargo-dist 工作流。
 5. cargo-dist 从 `main` 为 Windows x86_64、Linux x86_64/AArch64、macOS Intel/Apple Silicon 构建压缩包与校验文件，随后创建 tag 和 GitHub Release。
 
-正常流程中不要手工推送版本 tag。已发布版本的紧急修复从 `main` 切出 `hotfix/*`，合入 `main` 发布后再同步到 `develop`。Winget、Scoop、Homebrew 等包管理器发布暂不属于本流程。
+正常流程中不要手工推送版本 tag。若 crates.io 已发布但 cargo-dist 调度意外失败，维护者可从 `main` 手动 dispatch `Release` 工作流并填写同版本 tag；不得重复 bump 版本。已发布版本的紧急修复从 `main` 切出 `hotfix/*`，合入 `main` 发布后再同步到 `develop`。Winget、Scoop、Homebrew 等包管理器发布暂不属于本流程。
 
 正式 CI 构建会在程序报告的 SemVer 后附加 `+build.<run_number>.<run_attempt>.g<short_sha>`；Cargo.toml 和 tag 仍只保存规范版本号，不提交构建元数据。
 
