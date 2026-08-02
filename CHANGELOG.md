@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD024 -->
+
 # 📰 CHANGELOG
 
 Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
@@ -10,8 +12,13 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 
 ### Added
 
+- `game challenge instance` 子命令组：`instance start` / `stop` / `status` / `renew`
 - `game challenge status`：查询实例状态（pod 状态、剩余时间、续期次数）
 - `game challenge renew`：为运行中的实例续期 1 小时
+
+### Deprecated
+
+- `game challenge start` / `stop` / `status` / `renew` 弃用，迁移到 `game challenge instance <action>`；旧用法将在下一个 major 版本移除
 
 ### Fixed
 

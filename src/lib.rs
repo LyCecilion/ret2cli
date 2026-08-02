@@ -20,8 +20,8 @@ pub use error::{CliError, CliResult};
 
 use crate::{
     cli::{
-        AccountCommand, ChallengeCommand, GameCommand, ProfileCommand, SubmissionCommand,
-        TeamCommand,
+        AccountCommand, ChallengeCommand, GameCommand, InstanceCommand, ProfileCommand,
+        SubmissionCommand, TeamCommand,
     },
     client::Client,
     config::ClientConfig,
@@ -193,6 +193,14 @@ async fn dispatch_network(
     }
 }
 
+/// Warn that a flat challenge instance subcommand is deprecated in favor of `instance <cmd>`.
+fn warn_deprecated_instance(command: &str) {
+    eprintln!(
+        "warning: `game challenge {command}` is deprecated and will be removed in the next major \
+         release; use `game challenge instance {command}` instead"
+    );
+}
+
 async fn dispatch_challenge(
     client: &mut Client,
     config: &mut ClientConfig,
@@ -216,16 +224,34 @@ async fn dispatch_challenge(
         ChallengeCommand::UnlockHint(args) => {
             commands::challenge::unlock_hint(client, config, args, json, profile_name).await
         }
+        ChallengeCommand::Instance(command) => match command {
+            InstanceCommand::Start(args) => {
+                commands::challenge::start(client, config, args, json, profile_name).await
+            }
+            InstanceCommand::Stop(args) => {
+                commands::challenge::stop(client, config, args, json, profile_name).await
+            }
+            InstanceCommand::Status(args) => {
+                commands::challenge::status(client, config, args, json, profile_name).await
+            }
+            InstanceCommand::Renew(args) => {
+                commands::challenge::renew(client, config, args, json, profile_name).await
+            }
+        },
         ChallengeCommand::Start(args) => {
+            warn_deprecated_instance("start");
             commands::challenge::start(client, config, args, json, profile_name).await
         }
         ChallengeCommand::Stop(args) => {
+            warn_deprecated_instance("stop");
             commands::challenge::stop(client, config, args, json, profile_name).await
         }
         ChallengeCommand::Status(args) => {
+            warn_deprecated_instance("status");
             commands::challenge::status(client, config, args, json, profile_name).await
         }
         ChallengeCommand::Renew(args) => {
+            warn_deprecated_instance("renew");
             commands::challenge::renew(client, config, args, json, profile_name).await
         }
         ChallengeCommand::Files(args) => {
@@ -323,7 +349,9 @@ async fn resolve_challenge_id(
 mod tests {
     use crate::{
         Cli, LONG_VERSION, RELEASE_CODENAME, VERSION,
-        cli::{AccountCommand, ChallengeCommand, Commands, GameCommand, TeamCommand},
+        cli::{
+            AccountCommand, ChallengeCommand, Commands, GameCommand, InstanceCommand, TeamCommand,
+        },
     };
     use clap::{CommandFactory, Parser};
 
@@ -345,6 +373,19 @@ mod tests {
             cli.command,
             Some(Commands::Game {
                 command: GameCommand::Challenge { command: ChallengeCommand::Submit(_) }
+            })
+        ));
+    }
+    #[test]
+    fn parses_instance_subcommand() {
+        let cli = Cli::try_parse_from(["ret2cli", "game", "challenge", "instance", "start", "pwn"])
+            .unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Game {
+                command: GameCommand::Challenge {
+                    command: ChallengeCommand::Instance(InstanceCommand::Start(_))
+                }
             })
         ));
     }
@@ -400,6 +441,10 @@ mod tests {
             "game challenge submit pwn --flag flag{test}",
             "game challenge hints pwn",
             "game challenge unlock-hint pwn --id 3",
+            "game challenge instance start pwn",
+            "game challenge instance stop pwn",
+            "game challenge instance status pwn",
+            "game challenge instance renew pwn",
             "game challenge start pwn",
             "game challenge stop pwn",
             "game challenge status pwn",
