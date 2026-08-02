@@ -88,8 +88,8 @@ pub enum ProfileCommand {
 pub enum GameCommand {
     /// List available games
     List(GameListArgs),
-    /// Show one game
-    Show { game: Option<String> },
+    /// Show one game and its introduction, rules, or cover image
+    Show(GameShowArgs),
     /// Save the selected game in the current profile
     Select { game: String },
     /// Show the selected game's scoreboard
@@ -245,6 +245,21 @@ impl GameType {
     }
 }
 
+#[derive(Args, Debug, Clone, Default)]
+pub struct GameShowArgs {
+    /// Game id, name, or unique prefix; defaults to the selected game
+    pub game: Option<String>,
+    /// Show the detailed introduction (readme document)
+    #[arg(long, conflicts_with_all = ["rules", "cover"])]
+    pub intro: bool,
+    /// Show the participation rules document
+    #[arg(long, conflicts_with_all = ["intro", "cover"])]
+    pub rules: bool,
+    /// Render the cover image inline (Kitty or iTerm2 terminals)
+    #[arg(long, conflicts_with_all = ["intro", "rules"])]
+    pub cover: bool,
+}
+
 #[derive(Args, Debug, Clone)]
 pub struct GameListArgs {
     #[arg(long, default_value_t = 1)]
@@ -328,6 +343,9 @@ pub struct TeamCreateArgs {
     pub tag: Option<String>,
     #[arg(long)]
     pub game: Option<String>,
+    /// Skip the rules confirmation prompt
+    #[arg(long)]
+    pub yes: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -347,6 +365,9 @@ pub struct TeamJoinArgs {
     pub token: Option<String>,
     #[arg(long)]
     pub game: Option<String>,
+    /// Skip the rules confirmation prompt
+    #[arg(long)]
+    pub yes: bool,
 }
 
 #[derive(Args, Debug, Clone)]

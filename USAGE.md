@@ -135,11 +135,14 @@ ret2cli game list
 ret2cli game list --type training
 ret2cli game list --page 2 --page-size 10
 ret2cli game show 11
+ret2cli game show 11 --intro
+ret2cli game show 11 --rules
+ret2cli game show 11 --cover
 ret2cli game select 'MoeCTF 2026'
 ret2cli game scoreboard
 ```
 
-比赛可以用数字 ID、完整名称或唯一的名称前缀指定。`game select` 会保存后端返回的规范 ID 与名称，不保留旧的 `game use` 别名。`game show` 会显示队伍人数上限（`team_size` 是上限而非必须人数，例如 `Team size: ≤4` 表示 1~4 人；`0` 显示 `unlimited`）。scoreboard 的 `Group` 列表示 Ret2Shell institute；未分组显示 `—`，JSON 同时保留 `institute_id` 并增加 `institute_name`。若 institute 映射请求失败，scoreboard 会明确失败，不会输出可能误导的空组名。
+比赛可以用数字 ID、完整名称或唯一的名称前缀指定。`game select` 会保存后端返回的规范 ID 与名称，不保留旧的 `game use` 别名。`game show` 会显示队伍人数上限（`team_size` 是上限而非必须人数，例如 `Team size: ≤4` 表示 1~4 人；`0` 显示 `unlimited`）和封面 hash。`--intro` 渲染比赛详细介绍文档（readme），`--rules` 渲染参赛规则，二者输出 Markdown；`--cover` 在 Kitty 中通过 `kitten icat` 的 stream 模式显示，在 iTerm2 中使用 OSC 1337。两者都把图片插入当前文本流，图片随文字滚动，后续提示符显示在图片下方；不会使用固定坐标放置。其他终端或缺少 `kitten` 时会提示图片的 `media?hash=` 地址。scoreboard 的 `Group` 列表示 Ret2Shell institute；未分组显示 `—`，JSON 同时保留 `institute_id` 并增加 `institute_name`。若 institute 映射请求失败，scoreboard 会明确失败，不会输出可能误导的空组名。
 
 ### 题目
 
@@ -183,13 +186,13 @@ ret2cli game challenge download phptrick --file attachment.zip --output ./task.z
 ret2cli game team list
 ret2cli game team show Team Name
 ret2cli game team show mine
-ret2cli game team create --name 'Team Name' --tag XDSEC
+ret2cli game team create --name 'Team Name' --tag XDSEC --yes
 ret2cli game team update --name 'New Name'
 ret2cli game team join '<invitation-token>'
 ret2cli game team leave
 ```
 
-`game team update` 会请求服务器改名（`PATCH /game/{id}/team/self`），并保留队伍现有的 tag 与 institute。`team_size` 是队伍人数上限而非必须人数：多人赛确认后直接修改；单人赛（`team_size = 1`）时服务器会强制队伍名跟随账号昵称，因此客户端会先提示该改名将被忽略，确认后仍发送请求。
+`game team create` 和 `game team join` 在交互模式下会先展示该比赛的参赛规则（`doc/rules`，若存在）并要求确认已阅读；`--yes` 跳过展示与确认（脚本或 JSON 模式必须显式传入）。`game team update` 会请求服务器改名（`PATCH /game/{id}/team/self`），并保留队伍现有的 tag 与 institute。`team_size` 是队伍人数上限而非必须人数：多人赛确认后直接修改；单人赛（`team_size = 1`）时服务器会强制队伍名跟随账号昵称，因此客户端会先提示该改名将被忽略，确认后仍发送请求。
 
 `game team show` 会把一个或多个位置参数拼成队伍名，因此包含空格的名称无需引号也能查询；仍支持数字 ID、大小写不敏感的完整名称和唯一前缀。前缀不唯一时错误信息会列出候选队伍。`mine` 是 `show` 下保留的自身队伍目标；确实名为 `mine` 的队伍仍可通过数字 ID 访问。旧的 `game team mine` 路径不再保留。
 

@@ -181,6 +181,9 @@ pub async fn team_create(
     profile_name: Option<&str>,
 ) -> CliResult<()> {
     let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
+    if !confirm_rules(client, config, profile_name, game_id, args.yes, json).await? {
+        return Ok(());
+    }
     let name = require_or_input(args.name, "Team name", json)?;
     let path = format!("game/{game_id}/team");
     let result: TeamInfo = client
@@ -240,6 +243,9 @@ pub async fn team_join(
     profile_name: Option<&str>,
 ) -> CliResult<()> {
     let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
+    if !confirm_rules(client, config, profile_name, game_id, args.yes, json).await? {
+        return Ok(());
+    }
     let token = require_or_input(args.token, "Team invitation token", json)?;
     let path = format!("game/{game_id}/team");
     let result: TeamInfo =
@@ -250,6 +256,33 @@ pub async fn team_join(
         output::success(&format!("Joined team '{}'", result.name));
     }
     Ok(())
+}
+
+/// Show the game's participation rules and ask for explicit consent before
+/// creating or joining a team. `--yes` skips both the display and the prompt.
+async fn confirm_rules(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    game_id: i64,
+    yes: bool,
+    json: bool,
+) -> CliResult<bool> {
+    if yes {
+        return Ok(true);
+    }
+    match client.get_value(&format!("game/{game_id}/doc/rules"), &[], config, profile_name).await {
+        Ok(value) => {
+            if let Some(rules) = value.as_str().filter(|rules| !rules.is_empty()) {
+                output::info("Participation rules:");
+                output::print_markdown(rules);
+                output::blank();
+            }
+        }
+        Err(CliError::Api { status, .. }) if status == reqwest::StatusCode::NOT_FOUND => {}
+        Err(error) => return Err(error),
+    }
+    confirm("I have read the rules and want to proceed?", yes, json)
 }
 
 pub async fn team_leave(
@@ -430,7 +463,11 @@ mod tests {
         team_join(
             &mut client,
             &mut config,
-            TeamJoinArgs { token: Some("invite".to_owned()), game: Some("1".to_owned()) },
+            TeamJoinArgs {
+                token: Some("invite".to_owned()),
+                game: Some("1".to_owned()),
+                yes: true,
+            },
             true,
             None,
         )

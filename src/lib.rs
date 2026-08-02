@@ -142,8 +142,8 @@ async fn dispatch_network(
             GameCommand::List(args) => {
                 commands::game::games(&mut client, config, args, json, profile_name).await
             }
-            GameCommand::Show { game } => {
-                commands::game::game(&mut client, config, game, json, profile_name).await
+            GameCommand::Show(args) => {
+                commands::game::game(&mut client, config, args, json, profile_name).await
             }
             GameCommand::Select { game } => {
                 commands::game::select_game(&mut client, config, game, profile_name, json).await
@@ -367,6 +367,8 @@ mod tests {
             "account remove alice --yes",
             "game list --type training",
             "game show 11",
+            "game show 11 --rules",
+            "game show 11 --cover",
             "game select 11",
             "game scoreboard",
             "game challenge list",
@@ -382,9 +384,9 @@ mod tests {
             "game team show example",
             "game team show mine",
             "game team show The A Team",
-            "game team create --name example --tag TEST",
+            "game team create --name example --tag TEST --yes",
             "game team update --name example --yes",
-            "game team join invitation-token",
+            "game team join invitation-token --yes",
             "game team leave --yes",
             "game submission list",
             "completion bash --output completions.bash",
