@@ -220,7 +220,7 @@ fn print_context(config: &ClientConfig) -> CliResult<()> {
 fn print_help(path: &[String]) -> CliResult<()> {
     if path.is_empty() {
         let mut command = Cli::command();
-        command.print_long_help().map_err(CliError::Io)?;
+        command.print_help().map_err(CliError::Io)?;
         println!(
             "\n\nInteractive built-ins:\n  help [COMMAND...]  Show command help\n  context             Show the active profile, account, and game\n  exit, quit          Leave the interactive shell"
         );
