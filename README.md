@@ -75,6 +75,14 @@ cargo build --release
 target/release/ret2cli
 ```
 
+也可以直接使用 flake 构建或运行 Ret2CLI：
+
+```bash
+nix run . -- --version
+nix build .#ret2cli
+./result/bin/ret2cli
+```
+
 编译后可以取得编译后的二进制文件 `./target/release/ret2cli` 或 `.\target\release\ret2cli.exe`。
 
 ## 📝 Usage
@@ -139,7 +147,7 @@ ret2cli/
 ├── CHANGELOG.md         变更日志
 ├── CONTRIBUTING.md      贡献指南
 ├── AGENTS.md            AI 助手项目说明
-├── flake.nix            Nix 开发环境
+├── flake.nix            Nix 开发环境与 ret2cli 包输出
 ├── dist-workspace.toml  GitHub Release 构建目标
 ├── release-plz.toml     SemVer 与 git-only 发布策略
 ├── Cargo.lock           发布构建的依赖版本锁定
