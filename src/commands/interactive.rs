@@ -49,6 +49,7 @@ enum ReplAction {
     Empty,
     Exit,
     Context,
+    AlreadyInteractive,
     Help(Vec<String>),
     Command(Cli),
 }
@@ -106,6 +107,9 @@ pub async fn run(
                     ReplAction::Empty => {}
                     ReplAction::Exit => break,
                     ReplAction::Context => print_context(config)?,
+                    ReplAction::AlreadyInteractive => {
+                        println!("You are already in the interactive shell");
+                    }
                     ReplAction::Help(path) => print_help(&path)?,
                     ReplAction::Command(mut cli) => {
                         if cli.url.is_none() {
@@ -151,6 +155,7 @@ fn parse_line(line: &str) -> Result<ReplAction, ReplParseError> {
             Ok(ReplAction::Exit)
         }
         [command] if command == "context" => Ok(ReplAction::Context),
+        [command] if command == "interactive" => Ok(ReplAction::AlreadyInteractive),
         [command] if matches!(command.as_str(), "help" | "help()") => {
             Ok(ReplAction::Help(Vec::new()))
         }
@@ -286,6 +291,14 @@ mod tests {
         );
         assert!(matches!(parse_line("context").unwrap(), ReplAction::Context));
         assert!(matches!(parse_line("exit()").unwrap(), ReplAction::Exit));
+    }
+
+    #[test]
+    fn interactive_is_a_friendly_noop_inside_the_shell() {
+        assert!(matches!(parse_line("interactive").unwrap(), ReplAction::AlreadyInteractive));
+        assert!(
+            matches!(parse_line("ret2cli interactive").unwrap(), ReplAction::AlreadyInteractive)
+        );
     }
 
     #[test]
