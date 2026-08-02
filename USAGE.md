@@ -120,7 +120,7 @@ ret2cli --url https://temporary.example/ --token "$TOKEN" game list
 
 未知 profile 会立即报错，不会静默退回 default。只覆盖 URL 时不会携带当前 profile 的 token，避免把一个 Ret2Shell 实例的凭据发送给另一个实例；临时认证必须同时显式提供 `--token`。
 
-`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。邮箱来自最近一次 `account login` 或 `account show` 的本地缓存。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game select`。新格式为：
+`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。邮箱来自最近一次使用当前持久化 session 执行 `account login` 或 `account show` 的本地缓存；通过 `--token`/`R2S_TOKEN` 临时认证时不会改写它。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game select`。新格式为：
 
 ```toml
 [profiles.default.game]
