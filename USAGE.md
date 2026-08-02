@@ -217,7 +217,7 @@ ret2cli --json account show | jq .nickname
 
 JSON 模式和非 TTY 环境绝不弹出输入提示。缺少必要参数时命令直接以非零状态退出；下载进度也不会混入 stdout。
 
-可能产生较长的人类可读输出时，可以使用全局 `--pager auto|always|never`，它优先于配置文件 `[ui].pager_mode`（默认 `auto`）。`auto` 只在 stdout 是终端且内容超过终端高度时分页；`always` 强制分页，`never` 始终直接输出。分页程序按 `$PAGER`、`[ui].pager`、`less -R`、系统 `more` 的顺序尝试（`$PAGER` 与 `[ui].pager` 均不通过 shell 启动），全部失败时安全回退到 stdout。JSON、管道、重定向和补全不会自动分页。
+可能产生较长的人类可读输出时，可以使用全局 `--pager auto|always|never`，它优先于配置文件 `[ui].pager_mode`（默认 `auto`）。启动交互模式时指定的 `--pager` 会作为该 REPL 会话的默认值，REPL 内单条命令仍可再次覆盖。`auto` 只在 stdout 是终端且内容超过终端高度时分页；`always` 强制分页，`never` 始终直接输出。分页程序按 `$PAGER`、`[ui].pager`、`less -R`、系统 `more` 的顺序尝试（`$PAGER` 与 `[ui].pager` 均不通过 shell 启动），全部失败时安全回退到 stdout。JSON、管道、重定向和补全不会自动分页。
 
 常用退出码：
 

@@ -35,8 +35,14 @@ pub async fn run(cli: Cli) -> CliResult<()> {
         if !std::io::stdin().is_terminal() {
             return Err(CliError::Config("interactive mode requires a TTY".to_owned()));
         }
-        return commands::interactive::run(&mut config, cli.profile.as_deref(), cli.url, cli.token)
-            .await;
+        return commands::interactive::run(
+            &mut config,
+            cli.profile.as_deref(),
+            cli.url,
+            cli.token,
+            cli.pager,
+        )
+        .await;
     }
 
     run_in_session(cli, &mut config).await

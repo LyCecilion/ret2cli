@@ -8,6 +8,7 @@ use rustyline::{
 
 use crate::{
     Cli,
+    cli::PagerMode,
     config::ClientConfig,
     error::{CliError, CliResult},
 };
@@ -69,6 +70,7 @@ pub async fn run(
     requested_profile: Option<&str>,
     default_url: Option<String>,
     default_token: Option<String>,
+    default_pager: Option<PagerMode>,
 ) -> CliResult<()> {
     if let Some(name) = requested_profile {
         if !config.profiles.contains_key(name) {
@@ -112,12 +114,12 @@ pub async fn run(
                     }
                     ReplAction::Help(path) => print_help(&path)?,
                     ReplAction::Command(mut cli) => {
-                        if cli.url.is_none() {
-                            cli.url.clone_from(&default_url);
-                        }
-                        if cli.token.is_none() {
-                            cli.token.clone_from(&default_token);
-                        }
+                        apply_session_defaults(
+                            &mut cli,
+                            default_url.as_deref(),
+                            default_token.as_deref(),
+                            default_pager,
+                        );
                         if let Err(error) = crate::run_in_session(cli, config).await {
                             eprintln!("✗ {error}");
                         }
@@ -134,6 +136,23 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+fn apply_session_defaults(
+    cli: &mut Cli,
+    default_url: Option<&str>,
+    default_token: Option<&str>,
+    default_pager: Option<PagerMode>,
+) {
+    if cli.url.is_none() {
+        cli.url = default_url.map(str::to_owned);
+    }
+    if cli.token.is_none() {
+        cli.token = default_token.map(str::to_owned);
+    }
+    if cli.pager.is_none() {
+        cli.pager = default_pager;
+    }
 }
 
 fn parse_line(line: &str) -> Result<ReplAction, ReplParseError> {
@@ -309,6 +328,22 @@ mod tests {
         );
         assert!(matches!(parse_line("context").unwrap(), ReplAction::Context));
         assert!(matches!(parse_line("exit()").unwrap(), ReplAction::Exit));
+    }
+
+    #[test]
+    fn session_pager_override_wins_over_config_defaults() {
+        let ReplAction::Command(mut inherited) = parse_line("game list").unwrap() else {
+            panic!("expected a command");
+        };
+        apply_session_defaults(&mut inherited, None, None, Some(PagerMode::Never));
+        assert_eq!(inherited.pager, Some(PagerMode::Never));
+
+        let ReplAction::Command(mut explicit) = parse_line("game list --pager always").unwrap()
+        else {
+            panic!("expected a command");
+        };
+        apply_session_defaults(&mut explicit, None, None, Some(PagerMode::Never));
+        assert_eq!(explicit.pager, Some(PagerMode::Always));
     }
 
     #[test]
