@@ -12,6 +12,8 @@ cargo build --release
 
 开发时可以用 `cargo run -- <参数>` 代替已安装的 `ret2cli`。
 
+v1.0.x 发布线的 codename 为 **LORELEI**。正式 GitHub Actions 构建执行 `ret2cli --version` 时，还会显示 `1.0.x+build.<run_number>.<run_attempt>.g<short_sha>` 形式的构建元数据；本地构建只显示 Cargo.toml 中的规范版本。
+
 ## 交互式命令提示符
 
 在终端中直接运行以下任意一条命令：
@@ -24,7 +26,7 @@ ret2cli interactive
 启动后会显示 `账号@profile:比赛ID $` 形式的彩色动态提示符。未登录时账号为 `anonymous`，未选择比赛时比赛为 `none`。直接输入 one-line 命令时省略开头的 `ret2cli` 即可，也可以原样粘贴包含 `ret2cli` 的命令：
 
 ```text
-Ret2CLI 0.1.0 interactive shell
+Ret2CLI 1.0.0 (LORELEI) interactive shell
 Type "help" for commands, "context" for the active context, or "exit" to leave.
 limityrochen@default:22 $ game list
 limityrochen@default:22 $ game challenge show 'Pyjail 6'

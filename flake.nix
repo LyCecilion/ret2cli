@@ -34,6 +34,7 @@
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
             toolchain
+            pkgs.cargo-dist
             pkgs.pkg-config
             pkgs.nixfmt
           ];
