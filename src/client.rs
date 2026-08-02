@@ -326,6 +326,31 @@ impl Client {
         Ok(value)
     }
 
+    /// Fetch a raw response body with its content type, e.g. for inline images.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP, serialization, or config errors.
+    pub async fn download_bytes(
+        &mut self,
+        path: &str,
+        query: &[(&str, &str)],
+        config: &mut ClientConfig,
+        profile_name: Option<&str>,
+    ) -> CliResult<(Vec<u8>, String)> {
+        let response = self.request(Method::GET, path, query)?.send().await?;
+        let (response, new_token) = self.check_response(response).await?;
+        self.handle_token(new_token.as_deref(), config, profile_name)?;
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_owned();
+        let bytes = response.bytes().await?;
+        Ok((bytes.to_vec(), content_type))
+    }
+
     /// Download a file from a GET endpoint with streaming and optional progress bar.
     ///
     /// # Errors
