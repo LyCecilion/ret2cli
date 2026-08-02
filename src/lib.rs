@@ -222,6 +222,12 @@ async fn dispatch_challenge(
         ChallengeCommand::Stop(args) => {
             commands::challenge::stop(client, config, args, json, profile_name).await
         }
+        ChallengeCommand::Status(args) => {
+            commands::challenge::status(client, config, args, json, profile_name).await
+        }
+        ChallengeCommand::Renew(args) => {
+            commands::challenge::renew(client, config, args, json, profile_name).await
+        }
         ChallengeCommand::Files(args) => {
             commands::challenge::files(client, config, args, json, profile_name).await
         }
@@ -396,6 +402,8 @@ mod tests {
             "game challenge unlock-hint pwn --id 3",
             "game challenge start pwn",
             "game challenge stop pwn",
+            "game challenge status pwn",
+            "game challenge renew pwn",
             "game challenge files pwn",
             "game challenge download pwn --file attachment.zip --output task.zip",
             "game team list",

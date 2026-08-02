@@ -70,6 +70,15 @@ pub struct FileInfo {
     pub file: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct InstanceInfo {
+    pub state: String,
+    pub renew_count: i32,
+    /// Unix seconds when the instance was created; it expires `renew_count + 1` hours later.
+    pub created_at: i64,
+    pub challenge_id: i64,
+}
+
 pub async fn fetch_challenges(
     client: &mut Client,
     config: &mut ClientConfig,
@@ -311,6 +320,16 @@ pub async fn stop(
 ) -> CliResult<()> {
     instance_action(client, config, args, json, profile_name, false).await
 }
+
+/// Outcome of a start/stop action, derived from the pre-check state.
+#[derive(Clone, Copy)]
+enum InstanceAction {
+    Started,
+    AlreadyStarted(Option<i64>),
+    Stopped,
+    NotRunning,
+}
+
 async fn instance_action(
     client: &mut Client,
     config: &mut ClientConfig,
@@ -323,19 +342,174 @@ async fn instance_action(
         resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
             .await?;
     let path = format!("game/{game_id}/challenge/{challenge_id}/instance");
-    if start {
-        let _: serde_json::Value =
-            client.post_value(&path, &serde_json::json!({}), config, profile_name).await?;
+    let action = if start {
+        let instances = fetch_instances(client, config, profile_name, game_id).await?;
+        match find_instance(&instances, challenge_id) {
+            Some(instance) => InstanceAction::AlreadyStarted(Some(remaining_seconds(instance))),
+            None => {
+                match client.post_value(&path, &serde_json::json!({}), config, profile_name).await {
+                    Ok(_) => InstanceAction::Started,
+                    // A concurrent start may have won the race; the pod now exists.
+                    Err(err) if is_already_started(&err) => InstanceAction::AlreadyStarted(None),
+                    Err(err) => return Err(err),
+                }
+            }
+        }
     } else {
-        client.delete(&path, config, profile_name).await?;
-    }
-    let state = if start { "started" } else { "stopped" };
+        let instances = fetch_instances(client, config, profile_name, game_id).await?;
+        if find_instance(&instances, challenge_id).is_some() {
+            client.delete(&path, config, profile_name).await?;
+            InstanceAction::Stopped
+        } else {
+            InstanceAction::NotRunning
+        }
+    };
+    let state = match action {
+        InstanceAction::Started => "started",
+        InstanceAction::AlreadyStarted(_) => "already_started",
+        InstanceAction::Stopped => "stopped",
+        InstanceAction::NotRunning => "not_running",
+    };
     if json {
         output::print_json(&serde_json::json!({ "instance": state, "challenge_id": challenge_id }));
-    } else {
-        output::success(&format!("Instance {state}"));
+        return Ok(());
+    }
+    match action {
+        InstanceAction::Started => output::success("Instance started"),
+        InstanceAction::AlreadyStarted(Some(remaining)) => output::info(&format!(
+            "Instance already started ({} remaining)",
+            format_duration(remaining)
+        )),
+        InstanceAction::AlreadyStarted(None) => output::info("Instance already started"),
+        InstanceAction::Stopped => output::success("Instance stopped"),
+        InstanceAction::NotRunning => output::info("Instance is not running"),
     }
     Ok(())
+}
+
+pub async fn renew(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    args: ChallengeArgs,
+    json: bool,
+    profile_name: Option<&str>,
+) -> CliResult<()> {
+    let (game_id, challenge_id) =
+        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
+            .await?;
+    let instances = fetch_instances(client, config, profile_name, game_id).await?;
+    let Some(instance) = find_instance(&instances, challenge_id) else {
+        if json {
+            output::print_json(
+                &serde_json::json!({ "instance": "not_running", "challenge_id": challenge_id }),
+            );
+        } else {
+            output::info("Instance is not running");
+        }
+        return Ok(());
+    };
+    let path = format!("game/{game_id}/challenge/{challenge_id}/instance");
+    client.patch_no_body(&path, &serde_json::json!({}), config, profile_name).await?;
+    let remaining = remaining_seconds(instance) + 3600;
+    if json {
+        output::print_json(&serde_json::json!({
+            "instance": "renewed",
+            "challenge_id": challenge_id,
+            "renew_count": instance.renew_count + 1,
+            "remaining_seconds": remaining,
+        }));
+    } else {
+        output::success(&format!("Instance renewed — {} remaining", format_duration(remaining)));
+    }
+    Ok(())
+}
+
+pub async fn status(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    args: ChallengeArgs,
+    json: bool,
+    profile_name: Option<&str>,
+) -> CliResult<()> {
+    let (game_id, challenge_id) =
+        resolve_context(client, config, profile_name, args.game.as_deref(), &args.challenge)
+            .await?;
+    let instances = fetch_instances(client, config, profile_name, game_id).await?;
+    match find_instance(&instances, challenge_id) {
+        Some(instance) => {
+            let remaining = remaining_seconds(instance);
+            if json {
+                output::print_json(&serde_json::json!({
+                    "challenge_id": challenge_id,
+                    "instance": {
+                        "state": instance.state,
+                        "renew_count": instance.renew_count,
+                        "remaining_seconds": remaining,
+                    },
+                }));
+            } else {
+                output::info(&format!(
+                    "Instance is {} — {} remaining (renewed {}×)",
+                    instance.state,
+                    format_duration(remaining),
+                    instance.renew_count,
+                ));
+            }
+        }
+        None => {
+            if json {
+                output::print_json(&serde_json::json!({
+                    "challenge_id": challenge_id,
+                    "instance": null,
+                }));
+            } else {
+                output::info("Instance is not running");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// List every instance of the current user and their team in the game.
+pub async fn fetch_instances(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    game_id: i64,
+) -> CliResult<Vec<InstanceInfo>> {
+    let path = format!("game/{game_id}/instance");
+    client.get(&path, &[], config, profile_name).await
+}
+
+fn find_instance(instances: &[InstanceInfo], challenge_id: i64) -> Option<&InstanceInfo> {
+    instances.iter().find(|instance| instance.challenge_id == challenge_id)
+}
+
+/// Seconds until `created_at + (renew_count + 1) hours`, clamped at zero.
+fn remaining_seconds(instance: &InstanceInfo) -> i64 {
+    let expires_at = instance.created_at + i64::from(instance.renew_count + 1) * 3600;
+    (expires_at - chrono::Utc::now().timestamp()).max(0)
+}
+
+fn format_duration(secs: i64) -> String {
+    let hours = secs / 3600;
+    let minutes = (secs % 3600) / 60;
+    if hours > 0 {
+        format!("{hours}h {minutes:02}m")
+    } else if minutes > 0 {
+        format!("{minutes}m")
+    } else {
+        format!("{secs}s")
+    }
+}
+
+fn is_already_started(err: &CliError) -> bool {
+    matches!(
+        err,
+        CliError::Api { status, message }
+            if *status == reqwest::StatusCode::CONFLICT
+                && message == "this challenge instance is already launched"
+    )
 }
 
 pub async fn fetch_files(
@@ -496,5 +670,66 @@ mod tests {
     #[test]
     fn sanitizes_download_directory() {
         assert_eq!(safe_name("../a b"), ".._a_b");
+    }
+    #[test]
+    fn finds_instance_by_challenge() {
+        let instances = vec![
+            InstanceInfo {
+                state: "Running".to_owned(),
+                renew_count: 1,
+                created_at: 1_700_000_000,
+                challenge_id: 933,
+            },
+            InstanceInfo {
+                state: "Running".to_owned(),
+                renew_count: 0,
+                created_at: 1_700_000_000,
+                challenge_id: 22,
+            },
+        ];
+        assert_eq!(find_instance(&instances, 933).unwrap().renew_count, 1);
+        assert!(find_instance(&instances, 42).is_none());
+    }
+    #[test]
+    fn computes_remaining_time_from_renew_count() {
+        let instance = InstanceInfo {
+            state: "Running".to_owned(),
+            renew_count: 1,
+            created_at: chrono::Utc::now().timestamp() - 60,
+            challenge_id: 933,
+        };
+        let remaining = remaining_seconds(&instance);
+        assert!((6_900..=7_200).contains(&remaining), "remaining={remaining}");
+    }
+    #[test]
+    fn remaining_time_is_clamped_at_zero() {
+        let instance = InstanceInfo {
+            state: "Running".to_owned(),
+            renew_count: 0,
+            created_at: chrono::Utc::now().timestamp() - 7200,
+            challenge_id: 933,
+        };
+        assert_eq!(remaining_seconds(&instance), 0);
+    }
+    #[test]
+    fn formats_duration() {
+        assert_eq!(format_duration(0), "0s");
+        assert_eq!(format_duration(59), "59s");
+        assert_eq!(format_duration(60), "1m");
+        assert_eq!(format_duration(3720), "1h 02m");
+        assert_eq!(format_duration(7200), "2h 00m");
+    }
+    #[test]
+    fn recognizes_already_launched_conflict() {
+        let conflict = CliError::Api {
+            status: reqwest::StatusCode::CONFLICT,
+            message: "this challenge instance is already launched".to_owned(),
+        };
+        assert!(is_already_started(&conflict));
+        let other = CliError::Api {
+            status: reqwest::StatusCode::PRECONDITION_FAILED,
+            message: "please wait for rebuilding cargo crates".to_owned(),
+        };
+        assert!(!is_already_started(&other));
     }
 }

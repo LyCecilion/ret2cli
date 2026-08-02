@@ -134,6 +134,8 @@ pub enum ChallengeCommand {
     UnlockHint(UnlockHintArgs),
     Start(ChallengeArgs),
     Stop(ChallengeArgs),
+    Status(ChallengeArgs),
+    Renew(ChallengeArgs),
     Files(ChallengeArgs),
     Download(DownloadArgs),
 }
