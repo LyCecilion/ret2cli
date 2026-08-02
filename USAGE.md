@@ -41,7 +41,7 @@ alice@default:11 $ exit
 
 - `help`：显示完整命令树；
 - `help game challenge submit`：显示指定命令的帮助；
-- `context`：分三行显示当前上下文——profile（含 URL）、账号（含本地缓存的邮箱）和比赛（完整 ID 与名称）；
+- `context`：分三行显示当前上下文——profile（含 URL）、账号（含本地缓存的邮箱）和比赛（完整 ID 与名称）；字段按终端显示宽度对齐，支持中文等宽字符；
 - `exit`、`quit`、`exit()`、`quit()`：退出；
 - `Ctrl-C`：取消当前输入并回到提示符；
 - `Ctrl-D`：退出。
@@ -120,7 +120,7 @@ ret2cli --url https://temporary.example/ --token "$TOKEN" game list
 
 未知 profile 会立即报错，不会静默退回 default。只覆盖 URL 时不会携带当前 profile 的 token，避免把一个 Ret2Shell 实例的凭据发送给另一个实例；临时认证必须同时显式提供 `--token`。
 
-`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。邮箱来自最近一次 `account login` 或 `account show` 的本地缓存。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game select`。新格式为：
+`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。邮箱来自最近一次使用当前持久化 session 执行 `account login` 或 `account show` 的本地缓存；通过 `--token`/`R2S_TOKEN` 临时认证时不会改写它。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game select`。新格式为：
 
 ```toml
 [profiles.default.game]
@@ -189,7 +189,7 @@ ret2cli game team join '<invitation-token>'
 ret2cli game team leave
 ```
 
-`game team update` 会请求服务器改名（`PATCH /game/{id}/team/self`）。`team_size` 是队伍人数上限而非必须人数：多人赛确认后直接修改；单人赛（`team_size = 1`）时服务器会强制队伍名跟随账号昵称，因此客户端会先提示该改名将被忽略，确认后仍发送请求。
+`game team update` 会请求服务器改名（`PATCH /game/{id}/team/self`），并保留队伍现有的 tag 与 institute。`team_size` 是队伍人数上限而非必须人数：多人赛确认后直接修改；单人赛（`team_size = 1`）时服务器会强制队伍名跟随账号昵称，因此客户端会先提示该改名将被忽略，确认后仍发送请求。
 
 `game team show` 会把一个或多个位置参数拼成队伍名，因此包含空格的名称无需引号也能查询；仍支持数字 ID、大小写不敏感的完整名称和唯一前缀。前缀不唯一时错误信息会列出候选队伍。`mine` 是 `show` 下保留的自身队伍目标；确实名为 `mine` 的队伍仍可通过数字 ID 访问。旧的 `game team mine` 路径不再保留。
 
@@ -217,7 +217,7 @@ ret2cli --json account show | jq .nickname
 
 JSON 模式和非 TTY 环境绝不弹出输入提示。缺少必要参数时命令直接以非零状态退出；下载进度也不会混入 stdout。
 
-可能产生较长的人类可读输出时，可以使用全局 `--pager auto|always|never`，它优先于配置文件 `[ui].pager_mode`（默认 `auto`）。`auto` 只在 stdout 是终端且内容超过终端高度时分页；`always` 强制分页，`never` 始终直接输出。分页程序按 `$PAGER`、`[ui].pager`、`less -R`、系统 `more` 的顺序尝试（`$PAGER` 与 `[ui].pager` 均不通过 shell 启动），全部失败时安全回退到 stdout。JSON、管道、重定向和补全不会自动分页。
+可能产生较长的人类可读输出时，可以使用全局 `--pager auto|always|never`，它优先于配置文件 `[ui].pager_mode`（默认 `auto`）。启动交互模式时指定的 `--pager` 会作为该 REPL 会话的默认值，REPL 内单条命令仍可再次覆盖。`auto` 只在 stdout 是终端且内容超过终端高度时分页；`always` 强制分页，`never` 始终直接输出。分页程序按 `$PAGER`、`[ui].pager`、`less -R`、系统 `more` 的顺序尝试（`$PAGER` 与 `[ui].pager` 均不通过 shell 启动），全部失败时安全回退到 stdout。JSON、管道、重定向和补全不会自动分页。
 
 常用退出码：
 

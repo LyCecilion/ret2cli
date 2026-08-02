@@ -311,7 +311,13 @@ pub async fn show(
     profile_name: Option<&str>,
 ) -> CliResult<()> {
     let profile: AccountProfile = client.get("account/profile", &[], config, profile_name).await?;
-    if cache_active_account_email(config, profile_name, profile.email.as_deref())? {
+    if cache_active_account_email(
+        config,
+        profile_name,
+        client.persists_token(),
+        &profile.account,
+        profile.email.as_deref(),
+    )? {
         config.save()?;
     }
     if json {
@@ -341,11 +347,19 @@ pub async fn show(
 fn cache_active_account_email(
     config: &mut ClientConfig,
     profile_name: Option<&str>,
+    persistent_session: bool,
+    server_account: &str,
     email: Option<&str>,
 ) -> CliResult<bool> {
+    if !persistent_session {
+        return Ok(false);
+    }
     let Some(account) = config.active_profile_resolved(profile_name)?.active_account.clone() else {
         return Ok(false);
     };
+    if account != server_account {
+        return Ok(false);
+    }
     let changed = {
         let profile = config.active_profile_mut(profile_name)?;
         if let Some(session) = profile.accounts.get_mut(&account)
@@ -571,22 +585,39 @@ mod tests {
         let mut config = ClientConfig::default();
         let profile = config.active_profile_mut(None).unwrap();
         profile.store_account("alice".to_owned(), "token".to_owned(), None);
-        profile.active_account = None;
-        // Without an active account (e.g. a --token override) the local config is untouched.
-        assert!(!cache_active_account_email(&mut config, None, Some("a@example.com")).unwrap());
-
-        let profile = config.active_profile_mut(None).unwrap();
-        profile.active_account = Some("alice".to_owned());
+        // Invocation-only token overrides must not mutate the selected saved account.
+        assert!(
+            !cache_active_account_email(
+                &mut config,
+                None,
+                false,
+                "mallory",
+                Some("mallory@example.com")
+            )
+            .unwrap()
+        );
+        assert_eq!(config.active_profile_resolved(None).unwrap().accounts["alice"].email, None);
+        // A persistent session must still match the selected account identity.
+        assert!(
+            !cache_active_account_email(&mut config, None, true, "bob", Some("bob@example.com"))
+                .unwrap()
+        );
         // A changed email updates the cache and reports the change.
-        assert!(cache_active_account_email(&mut config, None, Some("a@example.com")).unwrap());
+        assert!(
+            cache_active_account_email(&mut config, None, true, "alice", Some("a@example.com"))
+                .unwrap()
+        );
         assert_eq!(
             config.active_profile_resolved(None).unwrap().accounts["alice"].email.as_deref(),
             Some("a@example.com")
         );
         // An unchanged email does not touch the config.
-        assert!(!cache_active_account_email(&mut config, None, Some("a@example.com")).unwrap());
+        assert!(
+            !cache_active_account_email(&mut config, None, true, "alice", Some("a@example.com"))
+                .unwrap()
+        );
         // A missing server email clears the cached value.
-        assert!(cache_active_account_email(&mut config, None, None).unwrap());
+        assert!(cache_active_account_email(&mut config, None, true, "alice", None).unwrap());
         assert_eq!(config.active_profile_resolved(None).unwrap().accounts["alice"].email, None);
     }
 
