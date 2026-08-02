@@ -132,10 +132,31 @@ pub enum ChallengeCommand {
     Submit(SubmitArgs),
     Hints(ChallengeArgs),
     UnlockHint(UnlockHintArgs),
+    /// Manage the challenge instance
+    #[command(subcommand)]
+    Instance(InstanceCommand),
+    /// Start the challenge instance (deprecated: use `instance start`)
     Start(ChallengeArgs),
+    /// Stop the challenge instance (deprecated: use `instance stop`)
     Stop(ChallengeArgs),
+    /// Show the instance status (deprecated: use `instance status`)
+    Status(ChallengeArgs),
+    /// Renew the instance for another hour (deprecated: use `instance renew`)
+    Renew(ChallengeArgs),
     Files(ChallengeArgs),
     Download(DownloadArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum InstanceCommand {
+    /// Start the challenge instance
+    Start(ChallengeArgs),
+    /// Stop the challenge instance
+    Stop(ChallengeArgs),
+    /// Show the instance status (phase, remaining time, renew count)
+    Status(ChallengeArgs),
+    /// Renew the instance for another hour
+    Renew(ChallengeArgs),
 }
 
 #[derive(Subcommand, Debug)]
