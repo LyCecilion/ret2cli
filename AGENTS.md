@@ -22,6 +22,8 @@ cargo clippy --all-targets -- -D warnings   # strict lint (no new warnings allow
 cargo fmt --all --check      # formatting
 cargo deny check licenses    # dependency licenses
 cargo run -q -- <args>       # run (in development environment)
+dist plan --tag vX.Y.Z       # validate a multi-platform release plan
+dist generate --check        # verify generated release CI is current
 ```
 
 ## Architecture
@@ -37,16 +39,22 @@ src/
 ├── error.rs         CliError → exit codes: 1 config/serialization, 2 unauthenticated, 3 forbidden, 4 not found, 5 network/server
 ├── output.rs        output capture + pager ($PAGER > [ui].pager > less -R > more), tabled tables, Markdown
 └── commands/        auth / game / challenge / team / submission / interactive / local profile management
+build.rs             codename selection + GitHub Actions build metadata
+release.rs           tested major.minor release-line codename mapping
+dist-workspace.toml  cargo-dist targets and GitHub Release configuration
+release-plz.toml     SemVer updates and crates.io publishing
+.github/workflows/   release-plz orchestration + generated cargo-dist release CI
 ```
 
 ## Code Conventions
 
-- **Commits & PRs**: follow [CONTRIBUTING.md](./CONTRIBUTING.md) — Conventional Commits for both commit messages and PR titles, one logical change per PR, target branch per Git Flow (feature → `develop`)
+- **Commits & PRs**: follow [CONTRIBUTING.md](./CONTRIBUTING.md) — Conventional Commits for both commit messages and PR titles, one logical change per PR; daily development targets `develop`, while releases and hotfixes target `main`
 - **Errors**: use `CliError`; interactive prompts (`confirm` / `require_or_input` / `require_or_password`) never appear in JSON or non-TTY mode — missing arguments fail with a non-zero exit and require an explicit `--yes`
 - **Precedence**: CLI flag > environment variable > config file > built-in default (e.g. pager mode, editor selection)
 - **Output**: human-readable output goes through `output::` (buffered + paged); with `--json` stdout emits exactly one JSON value; download progress must not mix into stdout
 - **Security constraints**: `unsafe_code = forbid`; `--url` overrides must not carry the profile's token (prevents credential leaks across instances); REPL history must never be written to disk (flag/token leaks)
 - **Testing**: new behavior must have unit test coverage; prefer extracting pure functions for testability (e.g. `resolve_team_candidates`, `build_pager_candidates`); network paths are verified with tokio mocks or a local mock server
+- **Releases**: `develop` remains the GitHub default branch so release-plz version PRs target it; `release/*` merges to `main`, where release-plz publishes crates.io before cargo-dist creates Windows, Linux, and macOS GitHub Releases
 
 ## Before touching API behavior
 

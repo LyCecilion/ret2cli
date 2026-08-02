@@ -4,23 +4,21 @@
 
 ## 🌊 分支规范
 
-Ret2CLI 使用 [Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)，包含两条长期分支，加上用于功能和发布的短期分支。
+Ret2CLI 使用 `main` 和 `develop` 两条长期分支。日常开发进入 `develop`；经过发布准备的 `release/*` 合入 `main`，发布 tag 只指向 `main` 上的稳定提交。
 
 ```text
-main                    ← 生产就绪。带版本 tag。
-  └── develop           ← 集成分支。所有功能在此汇合。
-        ├── feature/*   ← 每个功能一个分支。从 develop 拉出。
-        └── release/*   ← 发布候选。从 develop 拉出。
-  └── hotfix/*          ← 紧急修复。从 main 拉出。
+main                    ← 稳定发布；vX.Y.Z tag 指向这里
+├── hotfix/*            ← 已发布版本的紧急修复
+└── develop             ← 默认分支与日常集成分支
+    ├── feat/*          ← 新功能
+    ├── fix/*           ← 缺陷修复
+    ├── docs/*          ← 文档变更
+    ├── refactor/*      ← 重构
+    ├── chore/*         ← 工程维护
+    └── release/*       ← 发布候选，从 develop 拉出、合入 main
 ```
 
-| 分支             | 从哪拉    | 合到哪             | 用途                                            |
-| ---------------- | --------- | ------------------ | ----------------------------------------------- |
-| `main`           | —         | —                  | 仅稳定发布。从 `release/*` 或 `hotfix/*` 合入。 |
-| `develop`        | `main`    | —                  | 集成分支。所有功能先合到这里。                  |
-| `feature/<name>` | `develop` | `develop`          | 一个功能或一个修复一个分支。                    |
-| `release/vX.Y.Z` | `develop` | `main` + `develop` | 发布前冻结：更新版本号、完善 CHANGELOG.md。     |
-| `hotfix/<name>`  | `main`    | `main` + `develop` | 线上紧急修复。                                  |
+`release-plz-*` 分支由发布自动化创建和维护。release-plz 固定向 GitHub 默认分支发起版本 PR，因此仓库默认分支保持为 `develop`；新增 `main` 后不要将默认分支切换过去。发布分支上的额外修订在发布后同步回 `develop`，避免两条长期分支漂移。
 
 ## 🚀 提交流程
 
@@ -39,7 +37,7 @@ git remote add upstream git@github.com:LyCecilion/ret2cli.git
 ```bash
 git checkout develop
 git pull upstream develop
-git checkout -b feature/<name>
+git checkout -b feat/<name>
 ```
 
 ### 3. 开发并提交
@@ -61,45 +59,30 @@ git pull --rebase upstream develop
 推送后向 `upstream/develop` 发起 PR：
 
 ```bash
-git push origin feature/<name>
+git push origin feat/<name>
 ```
 
 ### 5. 发布流程
 
-由维护者从 `develop` 切出发布分支：
+Ret2CLI 遵循 SemVer。`release-plz` 读取 Conventional Commits、维护版本与 CHANGELOG Release PR，并先将发布版本上传到 crates.io；`cargo-dist` 随后创建同版本的 tag、GitHub Release 和三端二进制附件。
 
-```bash
-git checkout develop
-git pull upstream develop
-git checkout -b release/vX.Y.Z
+首次配置仓库时，维护者需要：
 
-# 更新版本号、完善 CHANGELOG.md
-git add -A
-git commit -m "chore: release vX.Y.Z"
+1. 保持 GitHub 默认分支为 `develop`，因为 release-plz 固定向默认分支创建版本 PR；
+2. 在 Actions 设置中启用 **Allow GitHub Actions to create and approve pull requests**；
+3. 创建具备 crates.io `publish-new` 与 `publish-update` 权限的 API token，并保存为 Actions secret `CARGO_REGISTRY_TOKEN`。
 
-git push upstream release/vX.Y.Z
-```
+日常发布流程如下：
 
-合入 `main` 后，发布分支合回 `develop` 保持同步，并打 tag：
+1. 变更合入 `develop` 后，`.github/workflows/release-plz.yml` 创建或更新面向 `develop` 的版本 PR。
+2. 维护者审阅版本号和 CHANGELOG。同一 `major.minor` 发布线共用一个 codename；首次提升 minor 或 major 时，必须同时更新 `release.rs` 的映射、`dist-workspace.toml` 的展示名和 CHANGELOG 文案，否则构建会拒绝未知发布线。
+3. 版本 PR 合入 `develop` 后，从该提交切出 `release/vX.Y.Z`，完成最终验证并向 `main` 发起 PR。发布分支如有新修订，发布后也要合回或逐项 backport 到 `develop`。
+4. 发布 PR 合入 `main` 后，release-plz 将 `X.Y.Z` 发布到 crates.io，计算对应的 `vX.Y.Z`，但不自行创建 tag 或 GitHub Release；随后通过 `workflow_dispatch` 调用 cargo-dist 工作流。
+5. cargo-dist 从 `main` 为 Windows x86_64、Linux x86_64/AArch64、macOS Intel/Apple Silicon 构建压缩包与校验文件，随后创建 tag 和 GitHub Release。
 
-```bash
-git checkout main
-git pull upstream main
-git tag -a vX.Y.Z -m "Ret2CLI vX.Y.Z"
-git push upstream --tags
+正常流程中不要手工推送版本 tag。若 crates.io 已发布但 cargo-dist 调度意外失败，维护者可从 `main` 手动 dispatch `Release` 工作流并填写同版本 tag；不得重复 bump 版本。已发布版本的紧急修复从 `main` 切出 `hotfix/*`，合入 `main` 发布后再同步到 `develop`。Winget、Scoop、Homebrew 等包管理器发布暂不属于本流程。
 
-git checkout develop
-git pull upstream develop
-git merge release/vX.Y.Z
-git push upstream develop
-
-git branch -d release/vX.Y.Z
-git push upstream --delete release/vX.Y.Z
-```
-
-### 6. 紧急修复
-
-`main` 上的紧急 bug 直接从 `main` 拉 `hotfix/<name>`，修复合入 `main` 后同样合回 `develop`。
+正式 CI 构建会在程序报告的 SemVer 后附加 `+build.<run_number>.<run_attempt>.g<short_sha>`；Cargo.toml 和 tag 仍只保存规范版本号，不提交构建元数据。
 
 ## 📋 Pull Request 之前
 
@@ -108,13 +91,13 @@ git push upstream --delete release/vX.Y.Z
 3. `cargo test`，确保全部测试通过。
 4. `cargo deny check licenses`，确保依赖许可通过审查。
 5. 新行为有对应的测试覆盖；纯内部重构不得引入测试缺口。
-6. 基于目标分支 rebase（功能 rebase 到 `develop`，修复 rebase 到 `main`）。
+6. 基于 PR 的目标分支 rebase（日常变更为 `develop`，发布或 hotfix 为 `main`），解决冲突后再请求审阅。
 
 ## 🌟 注意事项
 
 - 一个 Pull Request 应当仅包含一个逻辑变更，并确保其小而可审阅。
 - PR 标题使用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans) 格式，风格可参考现有提交历史（`type: :emoji: subject`）。
-- 将 feature 合入 `develop`、release 合入 `main`、hotfix 合入 `main`。
+- 日常开发 PR 以 `develop` 为目标，发布和 hotfix PR 以 `main` 为目标。
 - 修改公开行为（CLI 参数、输出格式、配置文件格式）时，同步更新 [USAGE.md](./USAGE.md)。
 - 涉及服务端 API 的行为，请先对照 [Ret2Shell 源码](https://github.com/ret2shell/ret2shell) 确认语义，不要臆测。
 

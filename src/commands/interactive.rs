@@ -189,7 +189,7 @@ fn parse_line(line: &str) -> Result<ReplAction, ReplParseError> {
 }
 
 fn print_banner(config: &ClientConfig) -> CliResult<()> {
-    println!("Ret2CLI {} interactive shell", env!("CARGO_PKG_VERSION"));
+    println!("Ret2CLI {} interactive shell", crate::LONG_VERSION);
     println!(
         "Type \"help\" for commands, \"context\" for the active context, or \"exit\" to leave."
     );

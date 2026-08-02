@@ -1,6 +1,6 @@
 [package]
 name = "ret2cli"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.89"
 authors = ["LyCecilion <LyCecilion@outlook.com>"]
@@ -8,6 +8,17 @@ description = "CLI client for Ret2Shell CTF platform"
 license = "MIT"
 repository = "https://github.com/LyCecilion/ret2cli"
 readme = "README.md"
+include = [
+    "/src/**",
+    "/assets/**",
+    "/Cargo.lock",
+    "/build.rs",
+    "/release.rs",
+    "/README.md",
+    "/USAGE.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
 keywords = ["cli", "ret2shell", "ctf"]
 categories = ["command-line-utilities"]
 
@@ -46,3 +57,8 @@ pedantic = { level = "warn", priority = -1 }
 
 unwrap_used = "warn"
 expect_used = "warn"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
