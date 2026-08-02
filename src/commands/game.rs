@@ -57,6 +57,15 @@ impl GameInfo {
             _ => "Unknown",
         }
     }
+
+    /// Team size is a cap, not a quota: 1..=N members are valid, 0 means unlimited.
+    fn team_size_str(&self) -> String {
+        match self.team_size {
+            None => "—".to_owned(),
+            Some(0) => "unlimited".to_owned(),
+            Some(value) => format!("\u{2264}{value}"),
+        }
+    }
 }
 
 #[derive(Tabled)]
@@ -139,11 +148,13 @@ pub async fn game(
         let start_str = GameInfo::format_ts(game.start_at);
         let end_str = GameInfo::format_ts(game.end_at);
         let status_str = game.status_str();
+        let team_size_str = game.team_size_str();
 
         let pairs: Vec<(&str, &str)> = vec![
             ("ID", &id_str),
             ("Name", game.name.as_str()),
             ("Type", game.host_type_str()),
+            ("Team size", &team_size_str),
             ("Start", &start_str),
             ("End", &end_str),
             ("Status", status_str),
@@ -293,6 +304,36 @@ mod tests {
         .unwrap();
         assert_eq!(game.host_type_str(), "Training");
         assert_eq!(game.start_at, 1);
+    }
+
+    #[test]
+    fn team_size_is_a_cap_not_a_quota() {
+        let game: GameInfo = serde_json::from_str(
+            r#"{
+          "id":1,"name":"Mini L-CTF 2026","brief":null,"start_at":1,"end_at":2,
+          "host_type":1,"team_size":4,"hidden":false,"offline":false,"frozen":false
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(game.team_size_str(), "\u{2264}4");
+
+        let unlimited: GameInfo = serde_json::from_str(
+            r#"{
+          "id":1,"name":"Open","brief":null,"start_at":1,"end_at":2,
+          "host_type":1,"team_size":0,"hidden":false,"offline":false,"frozen":false
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(unlimited.team_size_str(), "unlimited");
+
+        let unknown: GameInfo = serde_json::from_str(
+            r#"{
+          "id":1,"name":"Legacy","brief":null,"start_at":1,"end_at":2,
+          "host_type":1,"hidden":false,"offline":false,"frozen":false
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(unknown.team_size_str(), "—");
     }
 
     #[test]

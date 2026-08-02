@@ -130,17 +130,17 @@ impl Client {
         config: &mut ClientConfig,
         profile_name: Option<&str>,
     ) -> CliResult<()> {
-        if let Some(new) = new_token {
-            if self.token.as_deref() != Some(new) {
-                self.token = Some(new.to_owned());
-                if self.persist_token {
-                    let profile = config.active_profile_mut(profile_name)?;
-                    if let Some(account) = profile.active_account.clone()
-                        && let Some(session) = profile.accounts.get_mut(&account)
-                    {
-                        session.token = String::from(new);
-                        config.save()?;
-                    }
+        if let Some(new) = new_token
+            && self.token.as_deref() != Some(new)
+        {
+            self.token = Some(new.to_owned());
+            if self.persist_token {
+                let profile = config.active_profile_mut(profile_name)?;
+                if let Some(account) = profile.active_account.clone()
+                    && let Some(session) = profile.accounts.get_mut(&account)
+                {
+                    session.token = String::from(new);
+                    config.save()?;
                 }
             }
         }

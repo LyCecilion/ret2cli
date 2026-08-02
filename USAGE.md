@@ -33,7 +33,7 @@ alice@default:11 $ ret2cli game submission list
 alice@default:11 $ exit
 ```
 
-提示符分别对账号、profile 和比赛分段着色（设置 `NO_COLOR` 或使用 `TERM=dumb` 时自动关闭），并在每条命令完成后根据当前内存配置重新生成；因此 `profile use`、`account use/login/logout` 和 `game select` 会立即反映到下一行。比赛名称可能很长或包含空格，所以提示符只显示 ID；`context` 可查看完整的 ID 与名称。这里展示的是本地选中的上下文，不代表服务器已经验证 session，在线状态仍应使用 `account ping` 检查。
+提示符分别对账号、profile 和比赛分段着色（设置 `NO_COLOR` 或使用 `TERM=dumb` 时自动关闭），并在每条命令完成后根据当前内存配置重新生成；因此 `profile use`、`account use/login/logout` 和 `game select` 会立即反映到下一行。比赛名称可能很长或包含空格，所以提示符只显示 ID。这里展示的是本地选中的上下文，不代表服务器已经验证 session，在线状态仍应使用 `account ping` 检查。
 
 命令参数支持 shell 风格的单引号、双引号和反斜杠转义，但不会执行管道、重定向或其他 shell 语法。交互模式提供当前进程内的方向键历史与行编辑，不会把包含 flag、token 或密码的历史落盘。
 
@@ -41,7 +41,7 @@ alice@default:11 $ exit
 
 - `help`：显示完整命令树；
 - `help game challenge submit`：显示指定命令的帮助；
-- `context`：显示当前 profile、账号和比赛；
+- `context`：分三行显示当前上下文——profile（含 URL）、账号（含本地缓存的邮箱）和比赛（完整 ID 与名称）；
 - `exit`、`quit`、`exit()`、`quit()`：退出；
 - `Ctrl-C`：取消当前输入并回到提示符；
 - `Ctrl-D`：退出。
@@ -95,7 +95,7 @@ ret2cli account register --url https://ctf.example/ \
 
 `account ping` 只请求服务器验证当前 session 是否仍然存活，并显示往返延迟；它不会重复输出个人资料。缺少 session 或 token 无效时会以认证失败退出。
 
-`account show` 会显示头像 hash，并在终端中渲染 Markdown 格式的 Personal introduction。`account edit` 不带参数时会通过 `$VISUAL` 或 `$EDITOR` 打开多行 Markdown 编辑器，随后在 CLI 中渲染预览并确认；也可用 `--description`、`--description-file <PATH|->`、`--avatar PATH` 或 `--remove-avatar` 完成 one-line 修改。头像上传限制为 10 MiB。JSON 或非 TTY 模式必须显式提供修改内容并传入 `--yes`。客户端提交完整后端 profile 时只改变 description/avatar，并保留昵称、邮箱、权限等字段；它不会提供邮箱、密码、第三方验证服务或删除账号的修改入口。
+`account show` 会显示头像 hash，并在终端中渲染 Markdown 格式的 Personal introduction。`account edit` 不带参数时会通过 `$VISUAL` 或 `$EDITOR`（都未设置时用 `[ui].editor`，最后回退 vi）打开多行 Markdown 编辑器，随后在 CLI 中渲染预览并确认；也可用 `--description`、`--description-file <PATH|->`、`--avatar PATH` 或 `--remove-avatar` 完成 one-line 修改。头像上传限制为 10 MiB。JSON 或非 TTY 模式必须显式提供修改内容并传入 `--yes`。客户端提交完整后端 profile 时只改变 description/avatar，并保留昵称、邮箱、权限等字段；它不会提供邮箱、密码、第三方验证服务或删除账号的修改入口。
 
 `account code` 会在确认敏感性后生成六位大写十六进制临时身份验证码，有效期为五分钟。JSON 或非 TTY 模式必须传入 `--yes`。
 
@@ -120,7 +120,7 @@ ret2cli --url https://temporary.example/ --token "$TOKEN" game list
 
 未知 profile 会立即报错，不会静默退回 default。只覆盖 URL 时不会携带当前 profile 的 token，避免把一个 Ret2Shell 实例的凭据发送给另一个实例；临时认证必须同时显式提供 `--token`。
 
-`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game select`。新格式为：
+`profile list`、`profile show` 和交互式 `context` 会同时显示比赛 ID 与名称，例如 `11 (MoeCTF 2026)`。邮箱来自最近一次 `account login` 或 `account show` 的本地缓存。本项目尚未发布旧配置格式，因此不迁移原先的 `game = "11"`；若本地已有该格式，请删除该行后重新执行 `game select`。新格式为：
 
 ```toml
 [profiles.default.game]
@@ -139,7 +139,7 @@ ret2cli game select 'MoeCTF 2026'
 ret2cli game scoreboard
 ```
 
-比赛可以用数字 ID、完整名称或唯一的名称前缀指定。`game select` 会保存后端返回的规范 ID 与名称，不保留旧的 `game use` 别名。scoreboard 的 `Group` 列表示 Ret2Shell institute；未分组显示 `—`，JSON 同时保留 `institute_id` 并增加 `institute_name`。若 institute 映射请求失败，scoreboard 会明确失败，不会输出可能误导的空组名。
+比赛可以用数字 ID、完整名称或唯一的名称前缀指定。`game select` 会保存后端返回的规范 ID 与名称，不保留旧的 `game use` 别名。`game show` 会显示队伍人数上限（`team_size` 是上限而非必须人数，例如 `Team size: ≤4` 表示 1~4 人；`0` 显示 `unlimited`）。scoreboard 的 `Group` 列表示 Ret2Shell institute；未分组显示 `—`，JSON 同时保留 `institute_id` 并增加 `institute_name`。若 institute 映射请求失败，scoreboard 会明确失败，不会输出可能误导的空组名。
 
 ### 题目
 
@@ -184,9 +184,12 @@ ret2cli game team list
 ret2cli game team show Team Name
 ret2cli game team show mine
 ret2cli game team create --name 'Team Name' --tag XDSEC
+ret2cli game team update --name 'New Name'
 ret2cli game team join '<invitation-token>'
 ret2cli game team leave
 ```
+
+`game team update` 会请求服务器改名（`PATCH /game/{id}/team/self`）。`team_size` 是队伍人数上限而非必须人数：多人赛确认后直接修改；单人赛（`team_size = 1`）时服务器会强制队伍名跟随账号昵称，因此客户端会先提示该改名将被忽略，确认后仍发送请求。
 
 `game team show` 会把一个或多个位置参数拼成队伍名，因此包含空格的名称无需引号也能查询；仍支持数字 ID、大小写不敏感的完整名称和唯一前缀。前缀不唯一时错误信息会列出候选队伍。`mine` 是 `show` 下保留的自身队伍目标；确实名为 `mine` 的队伍仍可通过数字 ID 访问。旧的 `game team mine` 路径不再保留。
 
@@ -214,7 +217,7 @@ ret2cli --json account show | jq .nickname
 
 JSON 模式和非 TTY 环境绝不弹出输入提示。缺少必要参数时命令直接以非零状态退出；下载进度也不会混入 stdout。
 
-可能产生较长的人类可读输出时，可以使用全局 `--pager auto|always|never`。默认 `auto` 只在 stdout 是终端且内容超过终端高度时分页；`always` 强制使用 `$PAGER`（不通过 shell 启动），`never` 始终直接输出。`$PAGER` 不可用时会依次尝试 `less -R`、系统 `more`，最终安全回退到 stdout。JSON、管道、重定向和补全不会自动分页。
+可能产生较长的人类可读输出时，可以使用全局 `--pager auto|always|never`，它优先于配置文件 `[ui].pager_mode`（默认 `auto`）。`auto` 只在 stdout 是终端且内容超过终端高度时分页；`always` 强制分页，`never` 始终直接输出。分页程序按 `$PAGER`、`[ui].pager`、`less -R`、系统 `more` 的顺序尝试（`$PAGER` 与 `[ui].pager` 均不通过 shell 启动），全部失败时安全回退到 stdout。JSON、管道、重定向和补全不会自动分页。
 
 常用退出码：
 
@@ -257,7 +260,19 @@ name = "MoeCTF 2026"
 
 [profiles.default.accounts.lycecilion]
 token = "<redacted>"
+email = "<redacted>"
 
 [profiles.default.accounts.lycecilion-alt]
 token = "<redacted>"
+```
+
+### UI 偏好
+
+`[ui]` 段可选，所有字段缺省时保持内置默认。优先级为：命令行参数 > 环境变量 > 配置文件 > 内置默认。
+
+```toml
+[ui]
+pager_mode = "always"  # auto | always | never，低于 --pager 参数
+pager = "less -R -N"    # 分页程序，低于 $PAGER
+editor = "hx"           # 编辑器，低于 $VISUAL/$EDITOR
 ```

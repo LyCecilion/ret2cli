@@ -1,4 +1,5 @@
 use std::{
+    env,
     io::{self, IsTerminal, Read},
     path::Path,
     time::Instant,
@@ -90,10 +91,11 @@ pub async fn login(
     let canonical_account =
         profile.get("account").and_then(|v| v.as_str()).unwrap_or(&account).to_owned();
     let nickname = profile.get("nickname").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let email = profile.get("email").and_then(|v| v.as_str()).map(str::to_owned);
     let token = client.token.clone().ok_or_else(|| {
         CliError::Config("login completed without an authentication token".to_owned())
     })?;
-    config.active_profile_mut(profile_name)?.store_account(canonical_account.clone(), token);
+    config.active_profile_mut(profile_name)?.store_account(canonical_account.clone(), token, email);
     config.save()?;
     client.set_token_persistence(true);
     if json {
@@ -272,6 +274,16 @@ pub fn remove(
     Ok(())
 }
 
+fn configured_editor<'a>(
+    visual: Option<&'a str>,
+    editor: Option<&'a str>,
+    ui_editor: Option<&'a str>,
+) -> Option<&'a str> {
+    // Env overrides win over the config file; the editor itself falls back
+    // to dialoguer's default (vi) when everything is unset.
+    if visual.is_none() && editor.is_none() { ui_editor } else { None }
+}
+
 fn bind_profile_url(
     config: &mut ClientConfig,
     profile_name: Option<&str>,
@@ -299,6 +311,9 @@ pub async fn show(
     profile_name: Option<&str>,
 ) -> CliResult<()> {
     let profile: AccountProfile = client.get("account/profile", &[], config, profile_name).await?;
+    if cache_active_account_email(config, profile_name, profile.email.as_deref())? {
+        config.save()?;
+    }
     if json {
         output::print_json(&profile);
         return Ok(());
@@ -321,6 +336,28 @@ pub async fn show(
         output::print_markdown(description);
     }
     Ok(())
+}
+
+fn cache_active_account_email(
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    email: Option<&str>,
+) -> CliResult<bool> {
+    let Some(account) = config.active_profile_resolved(profile_name)?.active_account.clone() else {
+        return Ok(false);
+    };
+    let changed = {
+        let profile = config.active_profile_mut(profile_name)?;
+        if let Some(session) = profile.accounts.get_mut(&account)
+            && session.email.as_deref() != email
+        {
+            session.email = email.map(str::to_owned);
+            true
+        } else {
+            false
+        }
+    };
+    Ok(changed)
 }
 
 pub async fn edit(
@@ -346,8 +383,16 @@ pub async fn edit(
     } else if let Some(path) = args.description_file.as_deref() {
         Some(read_description(path)?)
     } else if !explicit {
-        let edited = Editor::new()
-            .extension(".md")
+        let mut editor = Editor::new();
+        editor.extension(".md");
+        if let Some(configured) = configured_editor(
+            env::var_os("VISUAL").and_then(|value| value.into_string().ok()).as_deref(),
+            env::var_os("EDITOR").and_then(|value| value.into_string().ok()).as_deref(),
+            config.ui.editor.as_deref(),
+        ) {
+            editor.executable(configured);
+        }
+        let edited = editor
             .edit(profile.description.as_deref().unwrap_or(""))
             .map_err(|error| CliError::Io(io::Error::other(error)))?;
         let Some(edited) = edited else {
@@ -511,6 +556,38 @@ mod tests {
         let digest = ring::digest::digest(&ring::digest::SHA256, answer.as_bytes());
         assert!(answer.starts_with("seed"));
         assert!(hex::encode(digest).starts_with("00"));
+    }
+
+    #[test]
+    fn configured_editor_prefers_env_over_config() {
+        assert_eq!(configured_editor(Some("hx"), None, Some("vi")), None);
+        assert_eq!(configured_editor(None, Some("nvim"), Some("vi")), None);
+        assert_eq!(configured_editor(None, None, Some("hx")), Some("hx"));
+        assert_eq!(configured_editor(None, None, None), None);
+    }
+
+    #[test]
+    fn show_caches_active_account_email_locally() {
+        let mut config = ClientConfig::default();
+        let profile = config.active_profile_mut(None).unwrap();
+        profile.store_account("alice".to_owned(), "token".to_owned(), None);
+        profile.active_account = None;
+        // Without an active account (e.g. a --token override) the local config is untouched.
+        assert!(!cache_active_account_email(&mut config, None, Some("a@example.com")).unwrap());
+
+        let profile = config.active_profile_mut(None).unwrap();
+        profile.active_account = Some("alice".to_owned());
+        // A changed email updates the cache and reports the change.
+        assert!(cache_active_account_email(&mut config, None, Some("a@example.com")).unwrap());
+        assert_eq!(
+            config.active_profile_resolved(None).unwrap().accounts["alice"].email.as_deref(),
+            Some("a@example.com")
+        );
+        // An unchanged email does not touch the config.
+        assert!(!cache_active_account_email(&mut config, None, Some("a@example.com")).unwrap());
+        // A missing server email clears the cached value.
+        assert!(cache_active_account_email(&mut config, None, None).unwrap());
+        assert_eq!(config.active_profile_resolved(None).unwrap().accounts["alice"].email, None);
     }
 
     #[test]

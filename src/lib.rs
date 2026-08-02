@@ -43,7 +43,8 @@ pub async fn run(cli: Cli) -> CliResult<()> {
 }
 
 pub(crate) async fn run_in_session(cli: Cli, config: &mut ClientConfig) -> CliResult<()> {
-    let capture = output::Capture::start(cli.pager, cli.json);
+    let pager_mode = cli.pager.or(config.ui.pager_mode).unwrap_or_default();
+    let capture = output::Capture::start(pager_mode, cli.json, config.ui.pager.clone());
     let result = run_in_session_inner(cli, config).await;
     let output_result = capture.finish();
     result.and(output_result)
@@ -156,6 +157,9 @@ async fn dispatch_network(
                 }
                 TeamCommand::Create(args) => {
                     commands::team::team_create(&mut client, config, args, json, profile_name).await
+                }
+                TeamCommand::Update(args) => {
+                    commands::team::team_update(&mut client, config, args, json, profile_name).await
                 }
                 TeamCommand::Join(args) => {
                     commands::team::team_join(&mut client, config, args, json, profile_name).await
@@ -373,6 +377,7 @@ mod tests {
             "game team show mine",
             "game team show The A Team",
             "game team create --name example --tag TEST",
+            "game team update --name example --yes",
             "game team join invitation-token",
             "game team leave --yes",
             "game submission list",
