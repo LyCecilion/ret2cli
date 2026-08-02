@@ -189,7 +189,7 @@ ret2cli game team join '<invitation-token>'
 ret2cli game team leave
 ```
 
-`game team update` 会请求服务器改名（`PATCH /game/{id}/team/self`）。`team_size` 是队伍人数上限而非必须人数：多人赛确认后直接修改；单人赛（`team_size = 1`）时服务器会强制队伍名跟随账号昵称，因此客户端会先提示该改名将被忽略，确认后仍发送请求。
+`game team update` 会请求服务器改名（`PATCH /game/{id}/team/self`），并保留队伍现有的 tag 与 institute。`team_size` 是队伍人数上限而非必须人数：多人赛确认后直接修改；单人赛（`team_size = 1`）时服务器会强制队伍名跟随账号昵称，因此客户端会先提示该改名将被忽略，确认后仍发送请求。
 
 `game team show` 会把一个或多个位置参数拼成队伍名，因此包含空格的名称无需引号也能查询；仍支持数字 ID、大小写不敏感的完整名称和唯一前缀。前缀不唯一时错误信息会列出候选队伍。`mine` 是 `show` 下保留的自身队伍目标；确实名为 `mine` 的队伍仍可通过数字 ID 访问。旧的 `game team mine` 路径不再保留。
 

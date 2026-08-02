@@ -37,6 +37,13 @@ struct TeamSolve {
     solved: Option<bool>,
 }
 
+#[derive(Debug, Serialize)]
+struct UpdateTeamRequest {
+    name: String,
+    tag: Option<String>,
+    institute_id: Option<i64>,
+}
+
 pub async fn fetch_teams(
     client: &mut Client,
     config: &mut ClientConfig,
@@ -212,14 +219,11 @@ pub async fn team_update(
         output::info("Aborted");
         return Ok(());
     }
-    let result: TeamInfo = client
-        .patch(
-            &format!("game/{game_id}/team/self"),
-            &serde_json::json!({ "name": name }),
-            config,
-            profile_name,
-        )
-        .await?;
+    let current: TeamInfo =
+        client.get(&format!("game/{game_id}/team/self"), &[], config, profile_name).await?;
+    let request = UpdateTeamRequest { name, tag: current.tag, institute_id: current.institute_id };
+    let result: TeamInfo =
+        client.patch(&format!("game/{game_id}/team/self"), &request, config, profile_name).await?;
     if json {
         output::print_json(&result);
     } else {
@@ -349,6 +353,23 @@ mod tests {
         let error = resolve_team_candidates(&teams, "Al").unwrap_err().to_string();
         assert!(error.contains("1 (Alpha)"));
         assert!(error.contains("2 (Alpine)"));
+    }
+
+    #[test]
+    fn update_request_preserves_tag_and_institute() {
+        let request = UpdateTeamRequest {
+            name: "Renamed".to_owned(),
+            tag: Some("Hazelita".to_owned()),
+            institute_id: Some(7),
+        };
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({
+                "name": "Renamed",
+                "tag": "Hazelita",
+                "institute_id": 7,
+            })
+        );
     }
 
     fn team_info(id: i64, name: &str) -> TeamInfo {
