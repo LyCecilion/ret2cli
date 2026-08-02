@@ -6,7 +6,7 @@ members = ["cargo:."]
 # The preferred dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.32.0"
 # Human-facing name used throughout the v1.0.x release line.
-display-name = "Ret2CLI — LORELEI"
+display-name = "Ret2CLI - LORELEI"
 # CI backends to support
 ci = "github"
 # Whether CI should trigger releases with dispatches instead of tag pushes
