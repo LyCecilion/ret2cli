@@ -1,6 +1,6 @@
 [workspace]
-# Versions are compared with Git tags; Ret2CLI is not published to crates.io.
-git_only = true
+# Publish the crate before cargo-dist creates the matching GitHub Release.
+publish = true
 # cargo-dist owns tags and GitHub Releases so it can attach every platform artifact.
 git_tag_enable = false
 git_release_enable = false
