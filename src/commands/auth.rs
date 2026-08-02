@@ -90,10 +90,13 @@ pub async fn login(
     let canonical_account =
         profile.get("account").and_then(|v| v.as_str()).unwrap_or(&account).to_owned();
     let nickname = profile.get("nickname").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let email = profile.get("email").and_then(|v| v.as_str()).map(str::to_owned);
     let token = client.token.clone().ok_or_else(|| {
         CliError::Config("login completed without an authentication token".to_owned())
     })?;
-    config.active_profile_mut(profile_name)?.store_account(canonical_account.clone(), token);
+    config
+        .active_profile_mut(profile_name)?
+        .store_account(canonical_account.clone(), token, email);
     config.save()?;
     client.set_token_persistence(true);
     if json {
@@ -299,6 +302,9 @@ pub async fn show(
     profile_name: Option<&str>,
 ) -> CliResult<()> {
     let profile: AccountProfile = client.get("account/profile", &[], config, profile_name).await?;
+    if cache_active_account_email(config, profile_name, profile.email.as_deref())? {
+        config.save()?;
+    }
     if json {
         output::print_json(&profile);
         return Ok(());
@@ -321,6 +327,28 @@ pub async fn show(
         output::print_markdown(description);
     }
     Ok(())
+}
+
+fn cache_active_account_email(
+    config: &mut ClientConfig,
+    profile_name: Option<&str>,
+    email: Option<&str>,
+) -> CliResult<bool> {
+    let Some(account) = config.active_profile_resolved(profile_name)?.active_account.clone() else {
+        return Ok(false);
+    };
+    let changed = {
+        let profile = config.active_profile_mut(profile_name)?;
+        if let Some(session) = profile.accounts.get_mut(&account)
+            && session.email.as_deref() != email
+        {
+            session.email = email.map(str::to_owned);
+            true
+        } else {
+            false
+        }
+    };
+    Ok(changed)
 }
 
 pub async fn edit(

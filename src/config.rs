@@ -38,6 +38,8 @@ impl std::fmt::Display for SelectedGame {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountSession {
     pub token: String,
+    #[serde(default)]
+    pub email: Option<String>,
 }
 
 impl ConnectionProfile {
@@ -54,8 +56,9 @@ impl ConnectionProfile {
             .map(|session| session.token.as_str())
     }
 
-    pub fn store_account(&mut self, account: String, token: String) {
-        self.accounts.insert(account.clone(), AccountSession { token });
+    pub fn store_account(&mut self, account: String, token: String, email: Option<String>) {
+        self.accounts
+            .insert(account.clone(), AccountSession { token, email });
         self.active_account = Some(account);
     }
 
@@ -182,8 +185,8 @@ mod tests {
     fn accounts_are_scoped_to_their_connection_profile() {
         let mut config = ClientConfig::default();
         let profile = config.active_profile_mut(None).unwrap();
-        profile.store_account("alice".to_owned(), "alice-token".to_owned());
-        profile.store_account("bob".to_owned(), "bob-token".to_owned());
+        profile.store_account("alice".to_owned(), "alice-token".to_owned(), None);
+        profile.store_account("bob".to_owned(), "bob-token".to_owned(), None);
         profile.game = Some(SelectedGame { id: 11, name: "Example CTF".to_owned() });
 
         assert_eq!(profile.active_account.as_deref(), Some("bob"));
