@@ -1,0 +1,9 @@
+[workspace]
+# Versions are compared with Git tags; Ret2CLI is not published to crates.io.
+git_only = true
+# cargo-dist owns tags and GitHub Releases so it can attach every platform artifact.
+git_tag_enable = false
+git_release_enable = false
+changelog_update = true
+semver_check = true
+pr_name = "chore: :bookmark: release v{{ version }}"

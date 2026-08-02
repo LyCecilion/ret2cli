@@ -4,6 +4,14 @@ mod commands;
 pub mod config;
 mod error;
 mod output;
+#[cfg(test)]
+#[path = "../release.rs"]
+mod release;
+
+pub const VERSION: &str = env!("RET2CLI_VERSION");
+pub const RELEASE_CODENAME: &str = env!("RET2CLI_CODENAME");
+pub const LONG_VERSION: &str =
+    concat!(env!("RET2CLI_VERSION"), " (", env!("RET2CLI_CODENAME"), ")");
 
 use std::{env, io::IsTerminal};
 
@@ -308,10 +316,20 @@ async fn resolve_challenge_id(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use crate::{
-        Cli,
+        Cli, LONG_VERSION, RELEASE_CODENAME, VERSION,
         cli::{AccountCommand, ChallengeCommand, Commands, GameCommand, TeamCommand},
     };
     use clap::{CommandFactory, Parser};
+
+    #[test]
+    fn version_includes_release_identity() {
+        let command = Cli::command();
+        assert_eq!(command.get_version(), Some(VERSION));
+        assert_eq!(command.get_long_version(), Some(LONG_VERSION));
+        assert!(LONG_VERSION.contains(RELEASE_CODENAME));
+        assert_eq!(RELEASE_CODENAME, "LORELEI");
+    }
+
     #[test]
     fn parses_new_command_tree() {
         let cli =

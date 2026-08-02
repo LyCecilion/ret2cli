@@ -2,7 +2,12 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "CLI client for Ret2Shell CTF platform")]
+#[command(
+    author,
+    version = crate::VERSION,
+    long_version = crate::LONG_VERSION,
+    about = "CLI client for Ret2Shell CTF platform"
+)]
 pub struct Cli {
     /// Emit one JSON value on stdout
     #[arg(long, global = true)]

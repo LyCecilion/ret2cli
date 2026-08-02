@@ -55,7 +55,7 @@ agg --text-font-family "Maple Mono NF CN" --font-size 20 --line-height 1.2 --spe
 
 ## 📦 Manual Installation
 
-你可以手动安装 Ret2CLI。从 [Releases](https://github.com/LyCecilion/ret2cli/releases) 中取得目标操作系统的二进制文件后，可以直接使用或加入 PATH 后调用。
+你可以手动安装 Ret2CLI。从 [Releases](https://github.com/LyCecilion/ret2cli/releases) 中取得 Windows x86_64、Linux x86_64/AArch64 或 macOS Intel/Apple Silicon 的压缩包后，可以直接使用其中的二进制文件或将其加入 PATH。
 
 你也可以自行从源码编译。在你的设备上 [配置 Rust 开发环境](https://doc.rust-lang.org/book/ch01-01-installation.html) 后，使用 `cargo build` 编译：
 
@@ -122,6 +122,7 @@ editor = "vim"          # 编辑器。将会被 `$VISUAL/$EDITOR` 覆盖。
 
 ```text
 ret2cli/
+├── .github/workflows/  release-plz 版本管理与 cargo-dist 多平台发布
 ├── src/
 │   ├── main.rs          tokio 入口与错误输出
 │   ├── lib.rs           调度中枢与 ID/名称解析
@@ -131,12 +132,17 @@ ret2cli/
 │   ├── error.rs         错误类型与退出码
 │   ├── output.rs        输出缓冲、pager、表格、Markdown 渲染
 │   └── commands/        auth / game / challenge / team / submission / interactive
+├── build.rs             release codename 与 CI 构建元数据
+├── release.rs           major.minor 发布线与 codename 映射
 ├── assets/              banner 与演示录屏
 ├── USAGE.md             完整使用指南
 ├── CHANGELOG.md         变更日志
 ├── CONTRIBUTING.md      贡献指南
 ├── AGENTS.md            AI 助手项目说明
 ├── flake.nix            Nix 开发环境
+├── dist-workspace.toml  GitHub Release 构建目标
+├── release-plz.toml     SemVer 与 git-only 发布策略
+├── Cargo.lock           发布构建的依赖版本锁定
 ├── deny.toml            依赖许可审查
 └── LICENSE              MIT
 ```
@@ -153,6 +159,12 @@ ret2cli/
 | `cargo fmt --all --check` | 格式检查 |
 | `cargo deny check licenses` | 依赖许可审查 |
 | `cargo run -q -- <args>` | 在开发环境中运行 `ret2cli` |
+| `dist plan --tag vX.Y.Z` | 检查多平台发布计划 |
+| `dist generate --check` | 检查 cargo-dist 工作流是否为最新生成结果 |
+
+正式发布采用 `main` / `develop` 双长期分支：release-plz 在默认分支 `develop` 维护版本 PR，`release/*` 合入 `main` 后由 cargo-dist 创建 tag、GitHub Release 及 Windows、Linux、macOS 附件。该流程为 git-only，不发布 crates.io，也暂不生成 Winget、Scoop 或 Homebrew 安装器。详见 [CONTRIBUTING](./CONTRIBUTING.md)。
+
+同一 `major.minor` 发布线共享 codename；v1.0.x 为 **LORELEI**。正式 CI 编译的程序版本还会附加 `+build.<run_number>.<run_attempt>.g<short_sha>`，tag 与 Cargo.toml 则保持纯 SemVer。
 
 ## 🧪 Testing
 

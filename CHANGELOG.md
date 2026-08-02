@@ -8,7 +8,7 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-08-02
+## [1.0.0] - 2026-08-02 — LORELEI
 
 ### Added
 
@@ -28,6 +28,8 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 - `game team create` / `join` 在创建或加入队伍前展示参赛规则并要求确认（`--yes` 跳过）
 - 语义化退出码：1 参数/配置/判题失败，2 未认证，3 无权限，4 资源不存在，5 网络或服务端错误
 - `deny.toml` 依赖许可审查配置
+- git-only SemVer 发布自动化：release-plz 维护版本 PR，cargo-dist 为 Windows、Linux 与 macOS 创建 GitHub Release 附件，不发布 crates.io
+- v1.0.x 发布线 codename `LORELEI`，正式 CI 二进制附带 GitHub run、attempt 与 commit 构成的 SemVer build metadata
 
 ### Fixed
 
