@@ -2,9 +2,11 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::{
-    cli::{GameContextArgs, TeamCreateArgs, TeamJoinArgs, TeamLeaveArgs, TeamShowArgs},
+    cli::{
+        GameContextArgs, TeamCreateArgs, TeamJoinArgs, TeamLeaveArgs, TeamShowArgs, TeamUpdateArgs,
+    },
     client::Client,
-    commands::{confirm, require_or_input},
+    commands::{confirm, game::GameInfo, require_or_input},
     config::ClientConfig,
     error::{CliError, CliResult},
     output, resolve_game_id,
@@ -122,12 +124,22 @@ async fn show_team(
 ) -> CliResult<()> {
     let base = format!("game/{game_id}/team/{team_id}");
     let team: TeamInfo = client.get(&base, &[], config, profile_name).await?;
-    let rank: Option<u64> =
-        client.get(&format!("{base}/rank"), &[], config, profile_name).await.ok();
+    // The rank endpoint rejects invalid (e.g. pending) teams with 412; that is a
+    // real "no rank yet" signal, while any other failure is a hard error.
+    let rank: Option<u64> = match client
+        .get(&format!("{base}/rank"), &[], config, profile_name)
+        .await
+    {
+        Ok(rank) => Some(rank),
+        Err(CliError::Api { status, .. }) if status == reqwest::StatusCode::PRECONDITION_FAILED => {
+            None
+        }
+        Err(error) => return Err(error),
+    };
     let members: Vec<MemberInfo> =
-        client.get(&format!("{base}/member"), &[], config, profile_name).await.unwrap_or_default();
+        client.get(&format!("{base}/member"), &[], config, profile_name).await?;
     let solves: Vec<TeamSolve> =
-        client.get(&format!("{base}/solve"), &[], config, profile_name).await.unwrap_or_default();
+        client.get(&format!("{base}/solve"), &[], config, profile_name).await?;
     if json {
         output::print_json(
             &serde_json::json!({ "team": team, "rank": rank, "members": members, "solves": solves }),
@@ -171,6 +183,47 @@ pub async fn team_create(
         output::print_json(&result);
     } else {
         output::success(&format!("Created team '{}'", result.name));
+    }
+    Ok(())
+}
+
+pub async fn team_update(
+    client: &mut Client,
+    config: &mut ClientConfig,
+    args: TeamUpdateArgs,
+    json: bool,
+    profile_name: Option<&str>,
+) -> CliResult<()> {
+    let game_id = required_game(client, config, profile_name, args.game.as_deref()).await?;
+    let name = require_or_input(args.name, "Team name", json)?;
+    // Team size is a cap, not a quota: 1 means solo, where the server forces
+    // the team name to follow the account nickname on every update.
+    let game: GameInfo = client.get(&format!("game/{game_id}"), &[], config, profile_name).await?;
+    let solo = game.team_size == Some(1);
+    let confirmed = if solo {
+        output::info(
+            "This solo game forces the team name to your account nickname; the rename will be ignored",
+        );
+        confirm("Rename your team anyway?", args.yes, json)?
+    } else {
+        confirm(&format!("Rename your team to '{name}'?"), args.yes, json)?
+    };
+    if !confirmed {
+        output::info("Aborted");
+        return Ok(());
+    }
+    let result: TeamInfo = client
+        .patch(
+            &format!("game/{game_id}/team/self"),
+            &serde_json::json!({ "name": name }),
+            config,
+            profile_name,
+        )
+        .await?;
+    if json {
+        output::print_json(&result);
+    } else {
+        output::success(&format!("Renamed team to '{}'", result.name));
     }
     Ok(())
 }

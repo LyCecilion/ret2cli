@@ -49,6 +49,7 @@ enum ReplAction {
     Empty,
     Exit,
     Context,
+    AlreadyInteractive,
     Help(Vec<String>),
     Command(Cli),
 }
@@ -106,6 +107,9 @@ pub async fn run(
                     ReplAction::Empty => {}
                     ReplAction::Exit => break,
                     ReplAction::Context => print_context(config)?,
+                    ReplAction::AlreadyInteractive => {
+                        println!("You are already in the interactive shell");
+                    }
                     ReplAction::Help(path) => print_help(&path)?,
                     ReplAction::Command(mut cli) => {
                         if cli.url.is_none() {
@@ -151,6 +155,7 @@ fn parse_line(line: &str) -> Result<ReplAction, ReplParseError> {
             Ok(ReplAction::Exit)
         }
         [command] if command == "context" => Ok(ReplAction::Context),
+        [command] if command == "interactive" => Ok(ReplAction::AlreadyInteractive),
         [command] if matches!(command.as_str(), "help" | "help()") => {
             Ok(ReplAction::Help(Vec::new()))
         }
@@ -205,22 +210,40 @@ fn sanitize_prompt_segment(value: &str) -> String {
     value.chars().map(|character| if character.is_control() { '?' } else { character }).collect()
 }
 
-fn print_context(config: &ClientConfig) -> CliResult<()> {
+fn context_text(config: &ClientConfig) -> CliResult<String> {
     let profile_name = config.active_profile_name(None)?;
     let profile = config.active_profile_resolved(None)?;
-    println!(
-        "profile={}  account={}  game={}",
-        profile_name,
-        profile.active_account.as_deref().unwrap_or("anonymous"),
-        profile.game.as_ref().map_or_else(|| "none".to_owned(), ToString::to_string)
-    );
+    let url = if profile.url.is_empty() { "—".to_owned() } else { profile.url.clone() };
+    let email = profile
+        .active_account
+        .as_ref()
+        .and_then(|name| profile.accounts.get(name))
+        .and_then(|session| session.email.clone())
+        .unwrap_or_else(|| "—".to_owned());
+    let game = profile.game.as_ref().map_or_else(|| "none".to_owned(), ToString::to_string);
+    Ok(format!(
+        "{}url={url}\n{}email={email}\ngame={game}",
+        pad_segment(&format!("profile={profile_name}"), 18),
+        pad_segment(
+            &format!("account={}", profile.active_account.as_deref().unwrap_or("anonymous")),
+            18
+        ),
+    ))
+}
+
+fn pad_segment(value: &str, width: usize) -> String {
+    if value.len() >= width { format!("{value}  ") } else { format!("{value:<width$}") }
+}
+
+fn print_context(config: &ClientConfig) -> CliResult<()> {
+    println!("{}", context_text(config)?);
     Ok(())
 }
 
 fn print_help(path: &[String]) -> CliResult<()> {
     if path.is_empty() {
         let mut command = Cli::command();
-        command.print_long_help().map_err(CliError::Io)?;
+        command.print_help().map_err(CliError::Io)?;
         println!(
             "\n\nInteractive built-ins:\n  help [COMMAND...]  Show command help\n  context             Show the active profile, account, and game\n  exit, quit          Leave the interactive shell"
         );
@@ -289,6 +312,15 @@ mod tests {
     }
 
     #[test]
+    fn interactive_is_a_friendly_noop_inside_the_shell() {
+        assert!(matches!(parse_line("interactive").unwrap(), ReplAction::AlreadyInteractive));
+        assert!(matches!(
+            parse_line("ret2cli interactive").unwrap(),
+            ReplAction::AlreadyInteractive
+        ));
+    }
+
+    #[test]
     fn reports_unclosed_quotes_without_exiting() {
         assert!(matches!(parse_line("team show 'unfinished"), Err(ReplParseError::Arguments(_))));
     }
@@ -326,5 +358,51 @@ mod tests {
     #[test]
     fn prompt_segments_cannot_inject_terminal_controls() {
         assert_eq!(sanitize_prompt_segment("safe\n\u{1b}[31m"), "safe??[31m");
+    }
+
+    #[test]
+    fn context_lists_profile_url_account_email_and_game() {
+        let mut config = ClientConfig::default();
+        let profile = config.active_profile_mut(None).unwrap();
+        profile.url = "https://ctf.example".to_owned();
+        profile.store_account(
+            "alice".to_owned(),
+            "token".to_owned(),
+            Some("alice@example.com".to_owned()),
+        );
+        profile.game = Some(crate::config::SelectedGame { id: 11, name: "MoeCTF 2026".to_owned() });
+        let text = context_text(&config).unwrap();
+        let lines: Vec<_> = text.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(
+            lines[0].contains("profile=default") && lines[0].contains("url=https://ctf.example")
+        );
+        assert!(lines[1].contains("account=alice") && lines[1].contains("email=alice@example.com"));
+        assert_eq!(lines[2], "game=11 (MoeCTF 2026)");
+    }
+
+    #[test]
+    fn context_keeps_separator_for_long_account_names() {
+        let mut config = ClientConfig::default();
+        let profile = config.active_profile_mut(None).unwrap();
+        profile.store_account(
+            "stellalyRin".to_owned(),
+            "token".to_owned(),
+            Some("ly@example.com".to_owned()),
+        );
+        let text = context_text(&config).unwrap();
+        let lines: Vec<_> = text.lines().collect();
+        assert_eq!(lines[1], "account=stellalyRin  email=ly@example.com");
+    }
+
+    #[test]
+    fn context_falls_back_for_missing_url_and_email() {
+        let config = ClientConfig::default();
+        let text = context_text(&config).unwrap();
+        let lines: Vec<_> = text.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].contains("profile=default") && lines[0].contains("url=—"));
+        assert!(lines[1].contains("account=anonymous") && lines[1].contains("email=—"));
+        assert_eq!(lines[2], "game=none");
     }
 }

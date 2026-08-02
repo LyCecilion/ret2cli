@@ -2,7 +2,7 @@
 name = "ret2cli"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 authors = ["LyCecilion <LyCecilion@outlook.com>"]
 description = "CLI client for Ret2Shell CTF platform"
 license = "MIT"

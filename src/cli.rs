@@ -1,4 +1,5 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "CLI client for Ret2Shell CTF platform")]
@@ -20,8 +21,8 @@ pub struct Cli {
     pub token: Option<String>,
 
     /// Control paging for human-readable command output
-    #[arg(long, global = true, value_enum, default_value_t = PagerMode::Auto)]
-    pub pager: PagerMode,
+    #[arg(long, global = true, value_enum)]
+    pub pager: Option<PagerMode>,
 
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -110,7 +111,8 @@ pub enum GameCommand {
     },
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PagerMode {
     #[default]
     Auto,
@@ -136,6 +138,7 @@ pub enum TeamCommand {
     List(GameContextArgs),
     Show(TeamShowArgs),
     Create(TeamCreateArgs),
+    Update(TeamUpdateArgs),
     Join(TeamJoinArgs),
     Leave(TeamLeaveArgs),
 }
@@ -325,6 +328,18 @@ pub struct TeamCreateArgs {
     pub tag: Option<String>,
     #[arg(long)]
     pub game: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct TeamUpdateArgs {
+    /// New team name
+    #[arg(long)]
+    pub name: Option<String>,
+    #[arg(long)]
+    pub game: Option<String>,
+    /// Skip the confirmation prompt
+    #[arg(long)]
+    pub yes: bool,
 }
 
 #[derive(Args, Debug, Clone)]

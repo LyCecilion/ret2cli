@@ -19,6 +19,7 @@ static BUFFER: Mutex<Option<String>> = Mutex::new(None);
 pub struct Capture {
     pager: PagerMode,
     json: bool,
+    config_pager: Option<String>,
     stdout_is_terminal: bool,
     terminal_height: usize,
     finished: bool,
@@ -26,11 +27,12 @@ pub struct Capture {
 
 impl Capture {
     #[must_use]
-    pub fn start(pager: PagerMode, json: bool) -> Self {
+    pub fn start(pager: PagerMode, json: bool, config_pager: Option<String>) -> Self {
         *buffer().lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(String::new());
         Self {
             pager,
             json,
+            config_pager,
             stdout_is_terminal: io::stdout().is_terminal(),
             terminal_height: detect_terminal_height(),
             finished: false,
@@ -39,7 +41,13 @@ impl Capture {
 
     pub fn finish(mut self) -> CliResult<()> {
         self.finished = true;
-        flush(self.pager, self.json, self.stdout_is_terminal, self.terminal_height)
+        flush(
+            self.pager,
+            self.json,
+            self.config_pager.as_deref(),
+            self.stdout_is_terminal,
+            self.terminal_height,
+        )
     }
 }
 
@@ -63,7 +71,13 @@ fn detect_terminal_height() -> usize {
 impl Drop for Capture {
     fn drop(&mut self) {
         if !self.finished {
-            let _ = flush(self.pager, self.json, self.stdout_is_terminal, self.terminal_height);
+            let _ = flush(
+                self.pager,
+                self.json,
+                self.config_pager.as_deref(),
+                self.stdout_is_terminal,
+                self.terminal_height,
+            );
         }
     }
 }
@@ -75,6 +89,7 @@ fn buffer() -> &'static Mutex<Option<String>> {
 fn flush(
     pager: PagerMode,
     json: bool,
+    config_pager: Option<&str>,
     stdout_is_terminal: bool,
     terminal_height: usize,
 ) -> CliResult<()> {
@@ -87,7 +102,9 @@ fn flush(
         return Ok(());
     }
     let line_count = content.lines().count();
-    if should_page(pager, json, stdout_is_terminal, line_count, terminal_height) && page(&content) {
+    if should_page(pager, json, stdout_is_terminal, line_count, terminal_height)
+        && page(&content, config_pager)
+    {
         return Ok(());
     }
     io::stdout().write_all(content.as_bytes()).map_err(CliError::Io)
@@ -110,10 +127,21 @@ fn should_page(
     }
 }
 
-fn pager_candidates() -> Vec<Vec<String>> {
+fn pager_candidates(config_pager: Option<&str>) -> Vec<Vec<String>> {
+    let env_pager = env::var_os("PAGER").and_then(|value| value.into_string().ok());
+    build_pager_candidates(env_pager.as_deref(), config_pager)
+}
+
+fn build_pager_candidates(env_pager: Option<&str>, config_pager: Option<&str>) -> Vec<Vec<String>> {
     let mut candidates = Vec::new();
-    if let Some(value) = env::var_os("PAGER").and_then(|value| value.into_string().ok())
-        && let Ok(words) = shell_words::split(&value)
+    if let Some(value) = env_pager
+        && let Ok(words) = shell_words::split(value)
+        && !words.is_empty()
+    {
+        candidates.push(words);
+    }
+    if let Some(value) = config_pager
+        && let Ok(words) = shell_words::split(value)
         && !words.is_empty()
     {
         candidates.push(words);
@@ -123,8 +151,8 @@ fn pager_candidates() -> Vec<Vec<String>> {
     candidates
 }
 
-fn page(content: &str) -> bool {
-    for candidate in pager_candidates() {
+fn page(content: &str, config_pager: Option<&str>) -> bool {
+    for candidate in pager_candidates(config_pager) {
         let Some((program, args)) = candidate.split_first() else {
             continue;
         };
@@ -229,5 +257,22 @@ mod tests {
         assert!(should_page(PagerMode::Always, false, false, 1, 24));
         assert!(!should_page(PagerMode::Never, false, true, 100, 24));
         assert!(!should_page(PagerMode::Always, true, true, 100, 24));
+    }
+
+    #[test]
+    fn pager_candidates_prefer_env_then_config_then_builtins() {
+        let candidates = build_pager_candidates(Some("bat -p"), Some("less -N"));
+        assert_eq!(candidates[0], ["bat", "-p"]);
+        assert_eq!(candidates[1], ["less", "-N"]);
+        assert_eq!(candidates[2], ["less", "-R"]);
+        assert_eq!(candidates[3], ["more"]);
+    }
+
+    #[test]
+    fn pager_candidates_skip_invalid_config_entries() {
+        let candidates = build_pager_candidates(None, Some("'"));
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0], ["less", "-R"]);
+        assert_eq!(candidates[1], ["more"]);
     }
 }
