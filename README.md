@@ -65,7 +65,9 @@ cd ret2cli
 cargo build --release
 ```
 
-如果使用 NixOS 或 Determinate Nix，可以直接使用 `flake.nix` 提供的 Rust 开发环境。
+编译后可以取得编译后的二进制文件 `./target/release/ret2cli` 或 `.\target\release\ret2cli.exe`。
+
+如果使用 NixOS 或 Determinate Nix，可以直接使用 `flake.nix` 提供的 Rust 开发环境，使用 `cargo` 完成编译。
 
 ```bash
 git clone https://github.com/LyCecilion/ret2cli.git
@@ -82,8 +84,6 @@ nix run . -- --version
 nix build .#ret2cli
 ./result/bin/ret2cli
 ```
-
-编译后可以取得编译后的二进制文件 `./target/release/ret2cli` 或 `.\target\release\ret2cli.exe`。
 
 ## 📝 Usage
 
