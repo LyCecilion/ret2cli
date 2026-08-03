@@ -1,23 +1,3 @@
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-## [1.1.0] - 2026-08-03 - Bloom in Two
-
-### Added
-
-- :sparkles: idempotent challenge instance start/stop, add status and renew
-
-### Other
-
-- :bookmark: add Bloom in Two codename for v1.1.x
-- :recycle: nest challenge instance actions under instance subcommand
-- :pencil2: change dash type
 <!-- markdownlint-disable MD024 -->
 
 # 📰 CHANGELOG
@@ -29,6 +9,8 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 ---
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-08-03 - Bloom in Two
 
 ### Added
 
