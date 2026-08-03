@@ -12,7 +12,7 @@ cargo build --release
 
 开发时可以用 `cargo run -- <参数>` 代替已安装的 `ret2cli`。
 
-v1.0.x 发布线的 codename 为 **LORELEI**。正式 GitHub Actions 构建执行 `ret2cli --version` 时，还会显示 `1.0.x+build.<run_number>.<run_attempt>.g<short_sha>` 形式的构建元数据；本地构建只显示 Cargo.toml 中的规范版本。
+`ret2cli --version` 显示规范版本与发布线 codename，例如 `1.1.0 (Bloom in Two)`。正式 GitHub Actions 构建还会在版本后附加 `+build.<run_number>.<run_attempt>.g<short_sha>` 形式的构建元数据；本地构建只显示 Cargo.toml 中的规范版本。
 
 ## 交互式命令提示符
 

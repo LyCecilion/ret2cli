@@ -64,7 +64,7 @@ git push origin feat/<name>
 
 ### 5. 发布流程
 
-Ret2CLI 遵循 SemVer。`release-plz` 读取 Conventional Commits、维护版本与 CHANGELOG Release PR，并先将发布版本上传到 crates.io；`cargo-dist` 随后创建同版本的 tag、GitHub Release 和三端二进制附件。
+Ret2CLI 遵循 SemVer。`release-plz` 读取 Conventional Commits、维护版本 PR 并发布 crates.io（`release-plz.toml` 中 `changelog_update = false`，它不会改写 CHANGELOG.md）；CHANGELOG 由维护者以项目风格手工维护。`cargo-dist` 随后创建同版本的 tag、GitHub Release 和三端二进制附件。
 
 首次配置仓库时，维护者需要：
 
@@ -74,11 +74,12 @@ Ret2CLI 遵循 SemVer。`release-plz` 读取 Conventional Commits、维护版本
 
 日常发布流程如下：
 
-1. 变更合入 `develop` 后，`.github/workflows/release-plz.yml` 创建或更新面向 `develop` 的版本 PR。
-2. 维护者审阅版本号和 CHANGELOG。同一 `major.minor` 发布线共用一个 codename；首次提升 minor 或 major 时，必须同时更新 `release.rs` 的映射、`dist-workspace.toml` 的展示名和 CHANGELOG 文案，否则构建会拒绝未知发布线。
-3. 版本 PR 合入 `develop` 后，从该提交切出 `release/vX.Y.Z`，完成最终验证并向 `main` 发起 PR。发布分支如有新修订，发布后也要合回或逐项 backport 到 `develop`。
+1. 变更合入 `develop` 后，`.github/workflows/release-plz.yml` 创建或更新面向 `develop` 的版本 PR。该 PR 只 bump `Cargo.toml` / `Cargo.lock`，不触碰 CHANGELOG。
+2. 首次提升 minor 或 major 时，必须先把新发布线注册到 `release.rs`（映射 + 测试）并更新 `dist-workspace.toml` 的展示名，否则 `build.rs` 会拒绝未知发布线；该改动需要先于版本 PR 合入 `develop`。
+3. 维护者在版本 PR 中补写该版本的 CHANGELOG 章节（中文、手工条目，标题格式 `## [X.Y.Z] - YYYY-MM-DD - CODENAME`）。版本 PR 合入 `develop` 后，从该提交切出 `release/vX.Y.Z`，完成最终验证（`cargo test`、`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check licenses`；`dist plan` / `dist generate --check` 由 CI 的 `plan` 任务验证）并向 `main` 发起 PR。版本敏感的测试（如硬编码 codename 的断言）失败时，在发布分支上修复。
 4. 发布 PR 合入 `main` 后，release-plz 将 `X.Y.Z` 发布到 crates.io，计算对应的 `vX.Y.Z`，但不自行创建 tag 或 GitHub Release；随后通过 `workflow_dispatch` 调用 cargo-dist 工作流。
 5. cargo-dist 从 `main` 为 Windows x86_64、Linux x86_64/AArch64、macOS Intel/Apple Silicon 构建压缩包与校验文件，随后创建 tag 和 GitHub Release。
+6. 发布后同步回 `develop`：先把发布分支上的额外修订快进合入 `develop`，再把 `main` 合入 `develop`，保持两条长期分支的历史对齐。发布期间 release-plz 会在每次 `develop` 推送后重复创建版本 PR（tag 尚未存在时它仍认为版本未发布），直接关闭即可，无需合并。
 
 正常流程中不要手工推送版本 tag。若 crates.io 已发布但 cargo-dist 调度意外失败，维护者可从 `main` 手动 dispatch `Release` 工作流并填写同版本 tag；不得重复 bump 版本。已发布版本的紧急修复从 `main` 切出 `hotfix/*`，合入 `main` 发布后再同步到 `develop`。Winget、Scoop、Homebrew 等包管理器发布暂不属于本流程。
 
