@@ -361,7 +361,10 @@ mod tests {
         assert_eq!(command.get_version(), Some(VERSION));
         assert_eq!(command.get_long_version(), Some(LONG_VERSION));
         assert!(LONG_VERSION.contains(RELEASE_CODENAME));
-        assert_eq!(RELEASE_CODENAME, "LORELEI");
+        assert_eq!(
+            RELEASE_CODENAME,
+            crate::release::codename_for_version(env!("CARGO_PKG_VERSION")).unwrap()
+        );
     }
 
     #[test]
