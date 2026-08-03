@@ -3,6 +3,7 @@ pub fn codename_for_version(package_version: &str) -> Option<&'static str> {
     let mut components = package_version.split('.');
     match (components.next(), components.next()) {
         (Some("1"), Some("0")) => Some("LORELEI"),
+        (Some("1"), Some("1")) => Some("Bloom in Two"),
         _ => None,
     }
 }
@@ -44,8 +45,15 @@ mod tests {
     }
 
     #[test]
+    fn bloom_in_two_covers_the_entire_v1_1_release_line() {
+        assert_eq!(codename_for_version("1.1.0"), Some("Bloom in Two"));
+        assert_eq!(codename_for_version("1.1.42"), Some("Bloom in Two"));
+        assert_eq!(codename_for_version("1.1.1-beta.1"), Some("Bloom in Two"));
+    }
+
+    #[test]
     fn a_new_release_line_requires_an_explicit_codename() {
-        assert_eq!(codename_for_version("1.1.0"), None);
+        assert_eq!(codename_for_version("1.2.0"), None);
         assert_eq!(codename_for_version("2.0.0"), None);
     }
 

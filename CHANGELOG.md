@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD024 -->
+
 # 📰 CHANGELOG
 
 Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
@@ -8,7 +10,24 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-08-02 — LORELEI
+## [1.1.0] - 2026-08-03 - Bloom in Two
+
+### Added
+
+- `game challenge instance` 子命令组：`instance start` / `stop` / `status` / `renew`
+- `game challenge status`：查询实例状态（pod 状态、剩余时间、续期次数）
+- `game challenge renew`：为运行中的实例续期 1 小时
+
+### Deprecated
+
+- `game challenge start` / `stop` / `status` / `renew` 弃用，迁移到 `game challenge instance <action>`；旧用法将在下一个 major 版本移除
+
+### Fixed
+
+- `game challenge start` 在实例已启动时直接报告 already started 并成功返回，不再撞上 Ret2Shell 的 60 秒重建冷却（412）
+- `game challenge stop` 在实例未启动时报告 not running，不再谎报 Instance stopped
+
+## [1.0.0] - 2026-08-02 - LORELEI
 
 ### Added
 

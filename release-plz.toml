@@ -4,6 +4,8 @@ publish = true
 # cargo-dist owns tags and GitHub Releases so it can attach every platform artifact.
 git_tag_enable = false
 git_release_enable = false
-changelog_update = true
+# CHANGELOG.md is hand-maintained in the project's bilingual style. When enabled,
+# release-plz prepends a generated English block instead of updating the file.
+changelog_update = false
 semver_check = true
 pr_name = "chore: :bookmark: release v{{ version }}"

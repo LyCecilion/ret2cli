@@ -154,9 +154,15 @@ ret2cli game challenge show 'Pyjail 6'
 ret2cli game challenge submit 'Pyjail 6' --flag 'examplectf{...}'
 ret2cli game challenge hints 'Pyjail 6'
 ret2cli game challenge unlock-hint 'Pyjail 6' --id 3
-ret2cli game challenge start 'Pyjail 6'
-ret2cli game challenge stop 'Pyjail 6'
+ret2cli game challenge instance start 'Pyjail 6'
+ret2cli game challenge instance stop 'Pyjail 6'
+ret2cli game challenge instance status 'Pyjail 6'
+ret2cli game challenge instance renew 'Pyjail 6'
 ```
+
+`instance start` / `stop` 在执行前先查询实例状态：实例已启动时 `start` 直接报告 already started 并返回成功（不触发 Ret2Shell 的 60 秒冷却）；实例未启动时 `stop` 报告 not running 而不谎报 stopped。`instance status` 显示实例的 pod 状态、剩余时间与续期次数（剩余时间 = 创建时间 + (续期次数 + 1) 小时）。`instance renew` 为运行中的实例续期 1 小时；未启动时提示 not running，超过续期上限时后端返回错误。
+
+`game challenge start` / `stop` / `status` / `renew` 旧用法仍可用，但已弃用并会在下一个 major 版本移除，请迁移到 `game challenge instance <action>`。
 
 提交 flag 后，客户端会等待 Ret2Shell 的异步 checker 返回最终结果，而不是把刚创建的 pending submission 当成判题结果。
 

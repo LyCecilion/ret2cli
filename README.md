@@ -178,7 +178,7 @@ ret2cli/
 
 正式发布采用 `main` / `develop` 双长期分支：release-plz 在默认分支 `develop` 维护版本 PR；`release/*` 合入 `main` 后先发布 crates.io，再由 cargo-dist 创建同版本 tag、GitHub Release 及 Windows、Linux、macOS 附件。暂不生成 Winget、Scoop 或 Homebrew 安装器。详见 [CONTRIBUTING](./CONTRIBUTING.md)。
 
-同一 `major.minor` 发布线共享 codename；v1.0.x 为 **LORELEI**。正式 CI 编译的程序版本还会附加 `+build.<run_number>.<run_attempt>.g<short_sha>`，tag 与 Cargo.toml 则保持纯 SemVer。
+同一 `major.minor` 发布线共享 codename。正式 CI 编译的程序版本还会附加 `+build.<run_number>.<run_attempt>.g<short_sha>`，tag 与 Cargo.toml 则保持纯 SemVer。
 
 ## 🧪 Testing
 
