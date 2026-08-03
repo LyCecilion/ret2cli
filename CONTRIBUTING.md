@@ -79,9 +79,9 @@ Ret2CLI 遵循 SemVer。`release-plz` 读取 Conventional Commits、维护版本
 3. 维护者从版本 PR 的 head 提交切出 `release/vX.Y.Z`（版本 PR 暂不合入 `develop`），在发布分支上补写该版本的 CHANGELOG 章节（中文、手工条目，标题格式 `## [X.Y.Z] - YYYY-MM-DD - CODENAME`）并修复版本敏感的测试（如硬编码 codename 的断言），完成最终验证（`cargo test`、`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check licenses`；`dist plan` / `dist generate --check` 由 CI 的 `plan` 任务验证）后向 `main` 发起 PR。
 4. 发布 PR 合入 `main` 后，release-plz 将 `X.Y.Z` 发布到 crates.io，计算对应的 `vX.Y.Z`，但不自行创建 tag 或 GitHub Release；随后通过 `workflow_dispatch` 调用 cargo-dist 工作流。
 5. cargo-dist 从 `main` 为 Windows x86_64、Linux x86_64/AArch64、macOS Intel/Apple Silicon 构建压缩包与校验文件，随后创建 tag 和 GitHub Release。
-6. 确认 tag 已创建后，**最后**把版本 PR 合入 `develop`：此时 release-plz 已将该版本视为已发布，不会再重复提议，也就不会产生多余的版本 PR。随后把 `main` 合入 `develop`，同步发布分支上的修订并保持两条长期分支的历史对齐。整个发布窗口内 `develop` 应保持冻结——任何推送都会让 release-plz rebase 版本 PR；若在 tag 创建前发生了 `develop` 推送并出现重复版本 PR，直接关闭即可。
+6. 确认 tag 已创建后，**最后**把版本 PR 合入 `develop`，随后把 `main` 合入 `develop`，同步发布分支上的修订并保持两条长期分支的历史对齐。整个发布窗口内 `develop` 应保持冻结——任何推送都会让 release-plz rebase 版本 PR。发布完成后，release-plz 会在 `develop` 出现新提交时自动为**下一个版本**开启 PR（即使只有 docs 变更也会提议补丁版本，如 1.1.1）：该 PR 是下一次发布的起点，保持开启、不要关闭；准备发布时完成发布前准备后合入即可。
 
-正常流程中不要手工推送版本 tag。若 crates.io 已发布但 cargo-dist 调度意外失败，维护者可从 `main` 手动 dispatch `Release` 工作流并填写同版本 tag；不得重复 bump 版本。若发布中途取消，把版本 PR 照常合入 `develop` 继续开发；在 tag 创建前 release-plz 会持续重复提议该版本，属正常现象。已发布版本的紧急修复从 `main` 切出 `hotfix/*`，合入 `main` 发布后再同步到 `develop`。Winget、Scoop、Homebrew 等包管理器发布暂不属于本流程。
+正常流程中不要手工推送版本 tag。若 crates.io 已发布但 cargo-dist 调度意外失败，维护者可从 `main` 手动 dispatch `Release` 工作流并填写同版本 tag；不得重复 bump 版本。若发布中途取消，把版本 PR 照常合入 `develop` 继续开发；在 tag 创建前 release-plz 会持续更新该版本 PR，属正常现象。已发布版本的紧急修复从 `main` 切出 `hotfix/*`，合入 `main` 发布后再同步到 `develop`。Winget、Scoop、Homebrew 等包管理器发布暂不属于本流程。
 
 正式 CI 构建会在程序报告的 SemVer 后附加 `+build.<run_number>.<run_attempt>.g<short_sha>`；Cargo.toml 和 tag 仍只保存规范版本号，不提交构建元数据。
 
