@@ -5,7 +5,7 @@
 If you discover a security vulnerability in Ret2CLI, please report it responsibly:
 
 1. **Do not** open a public GitHub issue.
-2. Email the maintainer or use [GitHub's private vulnerability reporting](https://github.com/ret2shell/ret2cli/security/advisories/new).
+2. Email the maintainer or use [GitHub's private vulnerability reporting](https://github.com/LyCecilion/ret2cli/security/advisories/new).
 3. Include a description of the vulnerability, steps to reproduce, and any suggested mitigations.
 4. We will acknowledge receipt ASAP and provide a timeline for a fix.
 

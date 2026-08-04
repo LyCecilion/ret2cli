@@ -5,7 +5,7 @@
 如果您发现 Ret2CLI 的安全漏洞，请负责任地报告：
 
 1. **请勿**在 GitHub 上公开提交 Issue。
-2. 请通过邮件联系维护者，或使用 [GitHub 私密漏洞报告](https://github.com/ret2shell/ret2cli/security/advisories/new)。
+2. 请通过邮件联系维护者，或使用 [GitHub 私密漏洞报告](https://github.com/LyCecilion/ret2cli/security/advisories/new)。
 3. 请包含漏洞描述、复现步骤以及建议的修复方案。
 4. 我们将尽快确认收到，并提供修复时间线。
 
