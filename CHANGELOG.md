@@ -10,6 +10,10 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- 在 Windows 构建中加入了资源头，包含 icon、名称、公司名称、注释、版权信息等
+
 ## [1.1.0] - 2026-08-03 - Bloom in Two
 
 ### Added
