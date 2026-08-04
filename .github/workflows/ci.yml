@@ -20,5 +20,7 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Check formatting
         run: cargo fmt --all --check
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
       - name: Check dependency licenses
         run: cargo deny check licenses
