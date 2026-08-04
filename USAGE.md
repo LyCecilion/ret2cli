@@ -261,7 +261,15 @@ ret2cli completion zsh --output ~/.zfunc/_ret2cli --force
 
 ## 配置
 
-配置位于 `~/.config/ret2cli/config.toml`：
+配置文件默认位于各平台的用户配置目录：
+
+| 平台 | 路径 |
+| --- | --- |
+| Linux | `~/.config/ret2cli/config.toml`（`$XDG_CONFIG_HOME` 优先） |
+| macOS | `~/Library/Application Support/ret2cli/config.toml` |
+| Windows | `%APPDATA%\ret2cli\config.toml` |
+
+完整配置示例：
 
 ```toml
 active_profile = "default"
