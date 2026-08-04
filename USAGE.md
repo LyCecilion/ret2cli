@@ -23,9 +23,14 @@ ret2cli
 ret2cli interactive
 ```
 
-启动后会显示 `账号@profile:比赛ID $` 形式的彩色动态提示符。未登录时账号为 `anonymous`，未选择比赛时比赛为 `none`。直接输入 one-line 命令时省略开头的 `ret2cli` 即可，也可以原样粘贴包含 `ret2cli` 的命令：
+启动时先显示 `figlet` 大字体渲染的 `Ret2CLI` 横幅，在支持颜色的终端上带 `lolcat` 式彩虹渐变（纯 Rust 实现，跨平台，不依赖系统的 figlet/lolcat；`NO_COLOR`、`TERM=dumb` 或 stdout 非终端时显示无颜色版本）。随后是 `账号@profile:比赛ID $` 形式的彩色动态提示符。未登录时账号为 `anonymous`，未选择比赛时比赛为 `none`。直接输入 one-line 命令时省略开头的 `ret2cli` 即可，也可以原样粘贴包含 `ret2cli` 的命令：
 
 ```text
+ ____      _   ____   ____ _     ___ 
+|  _ \ ___| |_|___ \ / ___| |   |_ _|
+| |_) / _ \ __| __) | |   | |    | | 
+|  _ <  __/ |_ / __/| |___| |___ | | 
+|_| \_\___|\__|_____|\____|_____|___|
 Ret2CLI 1.0.0 (LORELEI) interactive shell
 Type "help" for commands, "context" for the active context, or "exit" to leave.
 limityrochen@default:22 $ game list
