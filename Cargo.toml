@@ -43,7 +43,7 @@ toml = "0.8"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tabled = "0.18"
-termimad = "0.31"
+termimad = "0.35"
 colored = "3"
 chrono = { version = "0.4", features = ["serde"] }
 ring = "0.17"
