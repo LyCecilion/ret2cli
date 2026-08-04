@@ -56,7 +56,7 @@ indicatif = "0.17"
 futures-util = "0.3"
 figlet-rs = "1.0"
 clap_complete = "4"
-rustyline = { version = "16", default-features = false }
+rustyline = { version = "18", default-features = false }
 shell-words = "1"
 unicode-width = "0.2"
 
