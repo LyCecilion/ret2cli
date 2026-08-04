@@ -97,7 +97,15 @@ nix build .#ret2cli
 
 ## ⚙️ Configuration
 
-配置文件位于 `~/.config/ret2cli/config.toml`。首次运行或文件不存在时，客户端使用一个空的 `default` profile，登录或添加 profile 时自动建档。
+配置文件默认位于各平台的用户配置目录：
+
+| 平台 | 路径 |
+| --- | --- |
+| Linux | `~/.config/ret2cli/config.toml`（`$XDG_CONFIG_HOME` 优先） |
+| macOS | `~/Library/Application Support/ret2cli/config.toml` |
+| Windows | `%APPDATA%\ret2cli\config.toml` |
+
+首次运行或文件不存在时，客户端使用一个空的 `default` profile，登录或添加 profile 时自动建档。
 
 ```toml
 active_profile = "default"
