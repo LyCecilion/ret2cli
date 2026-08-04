@@ -22,6 +22,18 @@ include = [
 keywords = ["cli", "ret2shell", "ctf"]
 categories = ["command-line-utilities"]
 
+# Windows PE resource strings (shown in Explorer → Properties → Details).
+# FileVersion / ProductVersion / ProductName / FileDescription default to
+# values inherited from the [package] section; only override what differs.
+# Language is left unset (neutral) so i18n can be added later.
+[package.metadata.winresource]
+CompanyName = "Project Hazelita"
+FileDescription = "CLI client for Ret2Shell CTF Platform"
+Comments = "YUME∞MITA"
+
+[build-dependencies]
+winresource = "0.1"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "multipart"] }
