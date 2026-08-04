@@ -54,6 +54,7 @@ rpassword = "7"
 dialoguer = "0.11"
 indicatif = "0.17"
 futures-util = "0.3"
+figlet-rs = "1.0"
 clap_complete = "4"
 rustyline = { version = "16", default-features = false }
 shell-words = "1"
