@@ -1,0 +1,41 @@
+# Dependabot version updates
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  # Rust crate dependencies (Cargo.toml + Cargo.lock)
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "03:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore: :arrow_up:"
+    groups:
+      # Tightly coupled async/HTTP stack: bump together to avoid intermediate
+      # incompatible Cargo.lock states between PRs.
+      web-stack:
+        patterns:
+          - "reqwest*"
+          - "hyper*"
+          - "tokio*"
+          - "tower*"
+          - "rustls*"
+          - "h2"
+          - "http*"
+      # Serialization stack
+      serde-stack:
+        patterns:
+          - "serde*"
+          - "toml*"
+
+  # GitHub Actions used in .github/workflows
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore: :arrow_up:"
