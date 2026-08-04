@@ -39,24 +39,24 @@ clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "multipart"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "1.1"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
-tabled = "0.18"
-termimad = "0.31"
+tabled = "0.21"
+termimad = "0.35"
 colored = "3"
 chrono = { version = "0.4", features = ["serde"] }
 ring = "0.17"
 hex = "0.4"
-base64 = "0.22"
+base64 = "0.23"
 dirs = "6"
 rpassword = "7"
-dialoguer = "0.11"
-indicatif = "0.17"
+dialoguer = "0.12"
+indicatif = "0.18"
 futures-util = "0.3"
 figlet-rs = "1.0"
 clap_complete = "4"
-rustyline = { version = "16", default-features = false }
+rustyline = { version = "18", default-features = false }
 shell-words = "1"
 unicode-width = "0.2"
 
