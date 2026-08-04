@@ -28,4 +28,24 @@ fn main() {
 
     println!("cargo:rustc-env=RET2CLI_VERSION={version}");
     println!("cargo:rustc-env=RET2CLI_CODENAME={release_codename}");
+
+    embed_windows_resources();
+}
+
+/// Embeds the PE resource section (version info + application icon) into
+/// Windows builds.
+///
+/// The build script runs on the host, so the target OS has to be read from
+/// `CARGO_CFG_TARGET_OS` at runtime; `cfg!(target_os)` would report the host
+/// OS and silently skip resources when cross-compiling.
+fn embed_windows_resources() {
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    println!("cargo:rerun-if-changed=assets/icon.ico");
+    let mut resources = winresource::WindowsResource::new();
+    resources
+        .set_icon("assets/icon.ico")
+        .compile()
+        .unwrap_or_else(|err| panic!("failed to embed Windows PE resources: {err}"));
 }
