@@ -8,7 +8,7 @@
 
 CLI client for [Ret2Shell](https://github.com/ret2shell/ret2shell) CTF platform.
 
-[![Typing SVG](https://readme-typing-svg.demolab.com?font=Cascadia+Code&duration=2000&pause=800&center=true&vCenter=true&width=850&lines=A+legend+from+long+ago+now+will+never+leave+my+head.;The+air+is+cool+and+night+is+coming%2C+as+the+calm+Rhine+gently+flows.;Up+high+on+a+ledge+sitting+is+a+maiden+most+marvelously+fair%2C;Combing+her+hair+with+a+golden+comb%2C+singing+as+well.;It+was+a+marvelous+and+spellbinding+melody.;The+boatman%2C+seized+by+wild+yearning+guides+his+small+raft+downstream.;His+eyes+not+at+the+rocky+ledge%2C+but+rather+high+up+into+the+sky%2C;The+waves+devour+the+boat+along+with+the+boatman+in+the+end.;And+this+by+her+song's+sheer+power;fair+Lorelei+has+done.)](https://git.io/typing-svg)
+[![Typing SVG](https://readme-typing-svg.demolab.com?font=Cascadia+Code&duration=3000&pause=1000&center=true&vCenter=true&height=40&lines=%E5%A3%B0%E9%AB%98%E3%82%89%E3%81%8B%E3%81%AB%E3%80%81%E5%AE%A3%E8%AA%93%E5%B8%83%E5%91%8A%E3%81%A0;%E5%A4%96%E9%87%8E%E3%81%AF%E3%81%84%E3%82%89%E3%81%AA%E3%81%84;%E6%8C%87%E5%92%A5%E3%81%88%E3%81%A6%E3%81%8A%E9%9D%99%E3%81%8B%E3%81%AB;%E6%84%9B%E3%82%92%E7%9F%A5%E3%82%89%E3%81%AA%E3%81%84%E6%99%82%E4%BB%A3%E3%81%AF%E3%81%84%E3%82%89%E3%81%AA%E3%81%84;%E3%81%A8%E3%81%8D%E3%82%81%E3%81%8B%E3%81%9B%E3%81%A6+NewType)](https://git.io/typing-svg)
 
 </div>
 
