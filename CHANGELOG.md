@@ -10,6 +10,7 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-05 - TearJerker
 ### Added
 
 - 交互模式启动横幅：`figlet` 大字体渲染 `Ret2CLI` 并带 `lolcat` 式彩虹渐变（纯 Rust 实现，跨平台，不依赖系统 figlet/lolcat 或外部字体；设置 `NO_COLOR` 或 `TERM=dumb`、stdout 非终端时显示无颜色版本）

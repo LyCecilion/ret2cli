@@ -53,7 +53,7 @@ mod tests {
     }
 
     #[test]
-    #[test]
+
     fn tear_jerker_covers_the_entire_v2_0_release_line() {
         assert_eq!(codename_for_version("2.0.0"), Some("TearJerker"));
         assert_eq!(codename_for_version("2.0.42"), Some("TearJerker"));
