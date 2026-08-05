@@ -15,6 +15,10 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 - 交互模式启动横幅：`figlet` 大字体渲染 `Ret2CLI` 并带 `lolcat` 式彩虹渐变（纯 Rust 实现，跨平台，不依赖系统 figlet/lolcat 或外部字体；设置 `NO_COLOR` 或 `TERM=dumb`、stdout 非终端时显示无颜色版本）
 - 在 Windows 构建中加入了资源头，包含 icon、名称、公司名称、注释、版权信息等
 
+### Removed
+
+- 移除弃用的 `game challenge start` / `stop` / `status` / `renew` 扁平子命令，请使用 `game challenge instance <action>`
+
 ## [1.1.0] - 2026-08-03 - Bloom in Two
 
 ### Added
