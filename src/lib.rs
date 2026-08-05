@@ -193,14 +193,6 @@ async fn dispatch_network(
     }
 }
 
-/// Warn that a flat challenge instance subcommand is deprecated in favor of `instance <cmd>`.
-fn warn_deprecated_instance(command: &str) {
-    eprintln!(
-        "warning: `game challenge {command}` is deprecated and will be removed in the next major \
-         release; use `game challenge instance {command}` instead"
-    );
-}
-
 async fn dispatch_challenge(
     client: &mut Client,
     config: &mut ClientConfig,
@@ -238,22 +230,6 @@ async fn dispatch_challenge(
                 commands::challenge::renew(client, config, args, json, profile_name).await
             }
         },
-        ChallengeCommand::Start(args) => {
-            warn_deprecated_instance("start");
-            commands::challenge::start(client, config, args, json, profile_name).await
-        }
-        ChallengeCommand::Stop(args) => {
-            warn_deprecated_instance("stop");
-            commands::challenge::stop(client, config, args, json, profile_name).await
-        }
-        ChallengeCommand::Status(args) => {
-            warn_deprecated_instance("status");
-            commands::challenge::status(client, config, args, json, profile_name).await
-        }
-        ChallengeCommand::Renew(args) => {
-            warn_deprecated_instance("renew");
-            commands::challenge::renew(client, config, args, json, profile_name).await
-        }
         ChallengeCommand::Files(args) => {
             commands::challenge::files(client, config, args, json, profile_name).await
         }
@@ -448,10 +424,6 @@ mod tests {
             "game challenge instance stop pwn",
             "game challenge instance status pwn",
             "game challenge instance renew pwn",
-            "game challenge start pwn",
-            "game challenge stop pwn",
-            "game challenge status pwn",
-            "game challenge renew pwn",
             "game challenge files pwn",
             "game challenge download pwn --file attachment.zip --output task.zip",
             "game team list",
