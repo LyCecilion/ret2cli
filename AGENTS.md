@@ -35,7 +35,7 @@ src/
 │                    resolve_game_id / resolve_challenge_id (numeric ID, exact name, unique prefix)
 ├── cli.rs           clap command tree + global flags (--json / --profile / --url / --token / --pager)
 ├── client.rs        reqwest wrapper: /api/{path}, Bearer token, Set-Token refresh, streaming download, download_bytes
-├── config.rs        ~/.config/ret2cli/config.toml; atomic writes + file lock; [ui] section
+├── config.rs        user config dir per platform via dirs::config_dir() (Linux ~/.config, macOS ~/Library/Application Support, Windows %APPDATA%); atomic writes + file lock; [ui] section
 ├── error.rs         CliError → exit codes: 1 config/serialization, 2 unauthenticated, 3 forbidden, 4 not found, 5 network/server
 ├── output.rs        output capture + pager ($PAGER > [ui].pager > less -R > more), tabled tables, Markdown
 └── commands/        auth / game / challenge / team / submission / interactive / local profile management

@@ -12,7 +12,7 @@ cargo build --release
 
 开发时可以用 `cargo run -- <参数>` 代替已安装的 `ret2cli`。
 
-v1.0.x 发布线的 codename 为 **LORELEI**。正式 GitHub Actions 构建执行 `ret2cli --version` 时，还会显示 `1.0.x+build.<run_number>.<run_attempt>.g<short_sha>` 形式的构建元数据；本地构建只显示 Cargo.toml 中的规范版本。
+`ret2cli --version` 显示规范版本与发布线 codename，例如 `1.1.0 (Bloom in Two)`。正式 GitHub Actions 构建还会在版本后附加 `+build.<run_number>.<run_attempt>.g<short_sha>` 形式的构建元数据；本地构建只显示 Cargo.toml 中的规范版本。
 
 ## 交互式命令提示符
 
@@ -23,9 +23,14 @@ ret2cli
 ret2cli interactive
 ```
 
-启动后会显示 `账号@profile:比赛ID $` 形式的彩色动态提示符。未登录时账号为 `anonymous`，未选择比赛时比赛为 `none`。直接输入 one-line 命令时省略开头的 `ret2cli` 即可，也可以原样粘贴包含 `ret2cli` 的命令：
+启动时先显示 `figlet` 大字体渲染的 `Ret2CLI` 横幅，在支持颜色的终端上带 `lolcat` 式彩虹渐变（纯 Rust 实现，跨平台，不依赖系统的 figlet/lolcat；`NO_COLOR`、`TERM=dumb` 或 stdout 非终端时显示无颜色版本）。随后是 `账号@profile:比赛ID $` 形式的彩色动态提示符。未登录时账号为 `anonymous`，未选择比赛时比赛为 `none`。直接输入 one-line 命令时省略开头的 `ret2cli` 即可，也可以原样粘贴包含 `ret2cli` 的命令：
 
 ```text
+ ____      _   ____   ____ _     ___ 
+|  _ \ ___| |_|___ \ / ___| |   |_ _|
+| |_) / _ \ __| __) | |   | |    | | 
+|  _ <  __/ |_ / __/| |___| |___ | | 
+|_| \_\___|\__|_____|\____|_____|___|
 Ret2CLI 1.0.0 (LORELEI) interactive shell
 Type "help" for commands, "context" for the active context, or "exit" to leave.
 limityrochen@default:22 $ game list
@@ -162,8 +167,6 @@ ret2cli game challenge instance renew 'Pyjail 6'
 
 `instance start` / `stop` 在执行前先查询实例状态：实例已启动时 `start` 直接报告 already started 并返回成功（不触发 Ret2Shell 的 60 秒冷却）；实例未启动时 `stop` 报告 not running 而不谎报 stopped。`instance status` 显示实例的 pod 状态、剩余时间与续期次数（剩余时间 = 创建时间 + (续期次数 + 1) 小时）。`instance renew` 为运行中的实例续期 1 小时；未启动时提示 not running，超过续期上限时后端返回错误。
 
-`game challenge start` / `stop` / `status` / `renew` 旧用法仍可用，但已弃用并会在下一个 major 版本移除，请迁移到 `game challenge instance <action>`。
-
 提交 flag 后，客户端会等待 Ret2Shell 的异步 checker 返回最终结果，而不是把刚创建的 pending submission 当成判题结果。
 
 所有题目命令都可用 `--game <比赛>` 临时覆盖当前比赛：
@@ -256,7 +259,15 @@ ret2cli completion zsh --output ~/.zfunc/_ret2cli --force
 
 ## 配置
 
-配置位于 `~/.config/ret2cli/config.toml`：
+配置文件默认位于各平台的用户配置目录：
+
+| 平台 | 路径 |
+| --- | --- |
+| Linux | `~/.config/ret2cli/config.toml`（`$XDG_CONFIG_HOME` 优先） |
+| macOS | `~/Library/Application Support/ret2cli/config.toml` |
+| Windows | `%APPDATA%\ret2cli\config.toml` |
+
+完整配置示例：
 
 ```toml
 active_profile = "default"

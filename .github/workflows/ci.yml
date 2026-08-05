@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Test and lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run tests
+        run: cargo test
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+      - name: Check dependency licenses
+        run: cargo deny check licenses

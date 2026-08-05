@@ -1,6 +1,7 @@
-use std::{borrow::Cow, env, io};
+use std::{borrow::Cow, env, fmt::Write as _, io, io::IsTerminal};
 
 use clap::{CommandFactory, Parser};
+use figlet_rs::FIGlet;
 use rustyline::{
     Editor, Helper, completion::Completer, error::ReadlineError, highlight::Highlighter,
     hint::Hinter, history::DefaultHistory, validate::Validator,
@@ -189,6 +190,13 @@ fn parse_line(line: &str) -> Result<ReplAction, ReplParseError> {
 }
 
 fn print_banner(config: &ClientConfig) -> CliResult<()> {
+    if let Some(art) = banner_art() {
+        if colors_enabled() && io::stdout().is_terminal() {
+            println!("{}", rainbow(&art, rainbow_seed()));
+        } else {
+            println!("{art}");
+        }
+    }
     println!("Ret2CLI {} interactive shell", crate::LONG_VERSION);
     println!(
         "Type \"help\" for commands, \"context\" for the active context, or \"exit\" to leave."
@@ -199,6 +207,58 @@ fn print_banner(config: &ClientConfig) -> CliResult<()> {
         );
     }
     Ok(())
+}
+
+/// Render the `figlet Ret2CLI` banner with the embedded standard `FIGlet` font.
+fn banner_art() -> Option<String> {
+    let art = FIGlet::standard().ok()?.convert("Ret2CLI")?.to_string();
+    Some(art.trim_end().to_owned())
+}
+
+/// A pseudo-random rainbow seed derived from the system clock, so every
+/// session starts at a different point of the color cycle like `lolcat` does.
+fn rainbow_seed() -> f64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.subsec_nanos());
+    f64::from(nanos)
+}
+
+/// Rainbow-color `text` the way `lolcat` does: each character is printed in a
+/// truecolor hue that advances with the character index, and each new line
+/// starts one hue step further than the line before.
+fn rainbow(text: &str, seed: f64) -> String {
+    const SPREAD: f64 = 3.0;
+    const FREQUENCY: f64 = 0.1;
+    const HUE_STEP: f64 = std::f64::consts::TAU / 3.0;
+
+    let mut out = String::with_capacity(text.len() + 32);
+    let mut line_offset = 0.0;
+    let mut color_seed = seed;
+    for character in text.chars() {
+        if character == '\n' {
+            out.push('\n');
+            line_offset += 1.0;
+            color_seed = seed + line_offset;
+            continue;
+        }
+        let angle = FREQUENCY * color_seed / SPREAD;
+        let red = hue_channel(angle.sin());
+        let green = hue_channel((angle + HUE_STEP).sin());
+        let blue = hue_channel((angle + 2.0 * HUE_STEP).sin());
+        let _ = write!(out, "\x1b[38;2;{red};{green};{blue}m{character}");
+        color_seed += 1.0;
+    }
+    out.push_str("\x1b[39m");
+    out
+}
+
+/// Convert a lolcat hue channel in [1.0, 255.0] to a byte. The value is
+/// mathematically in range (sin ∈ [-1, 1] after `mul_add`), so the truncating
+/// cast never loses data.
+#[allow(clippy::as_conversions, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn hue_channel(intensity: f64) -> u8 {
+    intensity.mul_add(127.0, 128.0) as u8
 }
 
 fn build_prompt(config: &ClientConfig) -> CliResult<ReplPrompt> {
@@ -452,5 +512,33 @@ mod tests {
         assert!(lines[0].contains("profile=default") && lines[0].contains("url=—"));
         assert!(lines[1].contains("account=anonymous") && lines[1].contains("email=—"));
         assert_eq!(lines[2], "game=none");
+    }
+
+    #[test]
+    fn figlet_banner_renders_five_lines_of_ascii_art() {
+        let art = banner_art().unwrap();
+        let lines: Vec<_> = art.lines().collect();
+        assert_eq!(lines.len(), 5, "Ret2CLI glyphs are five rows tall");
+        assert!(lines.iter().all(|line| !line.trim().is_empty()));
+        assert!(art.contains('_') && art.contains('|'));
+    }
+
+    #[test]
+    fn rainbow_matches_lolcat_hue_math_for_a_fixed_seed() {
+        // lolcat: i = frequency * seed / spread; channel = sin(i + phase) * 127 + 128
+        assert_eq!(rainbow("A", 0.0), "\x1b[38;2;128;237;18mA\x1b[39m");
+    }
+
+    #[test]
+    fn rainbow_advances_the_hue_per_character_and_per_line() {
+        assert_eq!(
+            rainbow("AB\nCD", 0.0),
+            "\x1b[38;2;128;237;18mA\x1b[38;2;132;235;15mB\n\x1b[38;2;132;235;15mC\x1b[38;2;136;233;14mD\x1b[39m"
+        );
+        // Consecutive blank lines each advance the line-start hue by one step.
+        assert_eq!(
+            rainbow("A\n\nB", 0.0),
+            "\x1b[38;2;128;237;18mA\n\n\x1b[38;2;136;233;14mB\x1b[39m"
+        );
     }
 }

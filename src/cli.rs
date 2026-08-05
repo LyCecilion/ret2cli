@@ -135,14 +135,6 @@ pub enum ChallengeCommand {
     /// Manage the challenge instance
     #[command(subcommand)]
     Instance(InstanceCommand),
-    /// Start the challenge instance (deprecated: use `instance start`)
-    Start(ChallengeArgs),
-    /// Stop the challenge instance (deprecated: use `instance stop`)
-    Stop(ChallengeArgs),
-    /// Show the instance status (deprecated: use `instance status`)
-    Status(ChallengeArgs),
-    /// Renew the instance for another hour (deprecated: use `instance renew`)
-    Renew(ChallengeArgs),
     Files(ChallengeArgs),
     Download(DownloadArgs),
 }

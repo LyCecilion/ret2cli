@@ -4,6 +4,7 @@ pub fn codename_for_version(package_version: &str) -> Option<&'static str> {
     match (components.next(), components.next()) {
         (Some("1"), Some("0")) => Some("LORELEI"),
         (Some("1"), Some("1")) => Some("Bloom in Two"),
+        (Some("2"), Some("0")) => Some("TearJerker"),
         _ => None,
     }
 }
@@ -52,9 +53,15 @@ mod tests {
     }
 
     #[test]
+    fn tear_jerker_covers_the_entire_v2_0_release_line() {
+        assert_eq!(codename_for_version("2.0.0"), Some("TearJerker"));
+        assert_eq!(codename_for_version("2.0.42"), Some("TearJerker"));
+        assert_eq!(codename_for_version("2.0.1-beta.1"), Some("TearJerker"));
+    }
+
+    #[test]
     fn a_new_release_line_requires_an_explicit_codename() {
         assert_eq!(codename_for_version("1.2.0"), None);
-        assert_eq!(codename_for_version("2.0.0"), None);
     }
 
     #[test]
