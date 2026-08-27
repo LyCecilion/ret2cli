@@ -1,6 +1,7 @@
 mod cli;
 pub mod client;
 mod commands;
+pub mod completion;
 pub mod config;
 mod error;
 mod output;

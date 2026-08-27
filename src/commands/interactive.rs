@@ -1,19 +1,36 @@
-use std::{borrow::Cow, env, fmt::Write as _, io, io::IsTerminal};
+use std::{
+    borrow::Cow,
+    env,
+    fmt::Write as _,
+    io,
+    io::IsTerminal,
+    sync::{Arc, RwLock},
+    time::{Duration, Instant},
+};
 
 use clap::{CommandFactory, Parser};
 use figlet_rs::FIGlet;
 use rustyline::{
-    Editor, Helper, completion::Completer, error::ReadlineError, highlight::Highlighter,
-    hint::Hinter, history::DefaultHistory, validate::Validator,
+    CompletionType, Config as RtConfig, Editor, Helper, completion::Completer,
+    error::ReadlineError, highlight::Highlighter, hint::Hinter, history::DefaultHistory,
+    validate::Validator,
 };
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
     Cli,
     cli::PagerMode,
+    client::Client,
+    completion::{Lists, Snapshot, Suggestion, complete_line},
     config::ClientConfig,
     error::{CliError, CliResult},
 };
+
+/// How long cached platform lists stay trusted before a background refresh.
+const LIST_REFRESH_TTL: Duration = Duration::from_secs(120);
+
+/// Shared cache of platform entity lists for dynamic completions.
+type SharedLists = Arc<RwLock<Arc<Lists>>>;
 
 #[derive(Debug)]
 struct ReplPrompt {
@@ -21,20 +38,36 @@ struct ReplPrompt {
     colored: String,
 }
 
-#[derive(Debug, Default)]
-struct PromptHighlighter {
+#[derive(Debug)]
+struct ReplHelper {
     colored_prompt: String,
+    snapshot: Snapshot,
 }
 
-impl Completer for PromptHighlighter {
-    type Candidate = String;
+impl Completer for ReplHelper {
+    type Candidate = Suggestion;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &rustyline::Context<'_>,
+    ) -> Result<(usize, Vec<Self::Candidate>), ReadlineError> {
+        // Only completing at end-of-line is supported; mid-edit Tab yields
+        // no candidates.
+        if pos != line.len() {
+            return Ok((pos, Vec::new()));
+        }
+        let outcome = complete_line(line, &self.snapshot);
+        Ok((outcome.word_start, outcome.candidates))
+    }
 }
 
-impl Hinter for PromptHighlighter {
+impl Hinter for ReplHelper {
     type Hint = String;
 }
 
-impl Highlighter for PromptHighlighter {
+impl Highlighter for ReplHelper {
     fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
         &'s self,
         _prompt: &'p str,
@@ -44,8 +77,8 @@ impl Highlighter for PromptHighlighter {
     }
 }
 
-impl Validator for PromptHighlighter {}
-impl Helper for PromptHighlighter {}
+impl Validator for ReplHelper {}
+impl Helper for ReplHelper {}
 
 #[derive(Debug)]
 enum ReplAction {
@@ -83,11 +116,17 @@ pub async fn run(
     }
 
     print_banner(config)?;
-    let mut editor = Editor::<PromptHighlighter, DefaultHistory>::new().map_err(readline_error)?;
+    let lists: SharedLists = Arc::new(RwLock::new(Arc::new(Lists::default())));
+    let mut refresh = RefreshState { key: String::new(), spawned_at: None };
+
+    let rl_config = RtConfig::builder().completion_type(CompletionType::List).build();
+    let mut editor =
+        Editor::<ReplHelper, DefaultHistory>::with_config(rl_config).map_err(readline_error)?;
 
     loop {
         let prompt = build_prompt(config)?;
-        editor.set_helper(Some(PromptHighlighter { colored_prompt: prompt.colored }));
+        editor.set_helper(Some(build_helper(config, prompt.colored, &lists)));
+        maybe_spawn_refresh(config, &lists, &mut refresh);
         match editor.readline(&prompt.plain) {
             Ok(line) => {
                 let trimmed = line.trim();
@@ -122,8 +161,16 @@ pub async fn run(
                             default_token.as_deref(),
                             default_pager,
                         );
+                        let invalidates = invalidates_lists(&cli);
                         if let Err(error) = crate::run_in_session(cli, config).await {
                             eprintln!("✗ {error}");
+                        }
+                        // Whether the command failed does not matter much for
+                        // completion freshness; key changes are what count.
+                        if invalidates {
+                            refresh.key.clear();
+                            // Force `maybe_spawn_refresh` on the next prompt.
+                            refresh.spawned_at = None;
                         }
                     }
                 }
@@ -346,6 +393,139 @@ fn print_help(path: &[String]) -> CliResult<()> {
 
 fn readline_error(error: ReadlineError) -> CliError {
     CliError::Io(io::Error::other(error))
+}
+
+/// Tracks when platform lists were last refreshed and for which context.
+struct RefreshState {
+    /// `<url>|<account>|<game_id>` the last fetch targeted.
+    key: String,
+    /// `None` until a first (or forced) fetch for the current key.
+    spawned_at: Option<Instant>,
+}
+
+fn context_key(config: &ClientConfig) -> String {
+    match config.active_profile_resolved(None) {
+        Ok(profile) => {
+            let game = profile.game.as_ref().map_or_else(String::new, |game| game.id.to_string());
+            format!(
+                "{}|{}|{game}",
+                profile.url,
+                profile.active_account.as_deref().unwrap_or_default()
+            )
+        }
+        Err(_) => String::new(),
+    }
+}
+
+/// Build the per-prompt completion helper from local config and shared lists.
+///
+/// Local names (profiles/accounts) are snapshotted each prompt so switching
+/// is reflected instantly; remote lists lag by at most [`LIST_REFRESH_TTL`].
+fn build_helper(config: &ClientConfig, colored_prompt: String, lists: &SharedLists) -> ReplHelper {
+    let (profiles, accounts) = match config.active_profile_resolved(None) {
+        Ok(profile) => {
+            let mut profiles: Vec<String> =
+                config.profiles.keys().map(ToString::to_string).collect();
+            profiles.sort_unstable();
+            let mut accounts: Vec<String> = profile.accounts.keys().cloned().collect();
+            accounts.sort_unstable();
+            (profiles, accounts)
+        }
+        Err(_) => (Vec::new(), Vec::new()),
+    };
+    let current = match lists.read() {
+        Ok(guard) => Arc::clone(&guard),
+        Err(poisoned) => Arc::clone(&*poisoned.into_inner()),
+    };
+    ReplHelper { colored_prompt, snapshot: Snapshot { profiles, accounts, lists: current } }
+}
+
+/// Fire a background refresh when the context changed or data went stale.
+fn maybe_spawn_refresh(config: &ClientConfig, lists: &SharedLists, state: &mut RefreshState) {
+    let key = context_key(config);
+    let expired = state.spawned_at.is_none_or(|at| at.elapsed() >= LIST_REFRESH_TTL);
+    if key == state.key && !expired {
+        return;
+    }
+    spawn_list_refresh(config, lists);
+    state.key = key;
+    state.spawned_at = Some(Instant::now());
+}
+
+/// Kick off a detached fetch of games plus the active game's challenges and
+/// teams. Errors are swallowed: completions degrade, never error.
+fn spawn_list_refresh(config: &ClientConfig, lists: &SharedLists) {
+    let Ok(profile) = config.active_profile_resolved(None) else {
+        return;
+    };
+    let url = profile.url.clone();
+    if url.is_empty() {
+        return;
+    }
+    let token = profile.active_token().map(str::to_owned);
+    let game_id = profile.game.as_ref().map(|game| game.id);
+    let lists = Arc::clone(lists);
+
+    tokio::spawn(async move {
+        let fetched = fetch_lists(&url, token, game_id).await;
+        if let Ok(mut guard) = lists.write() {
+            *guard = Arc::new(fetched);
+        }
+    });
+}
+
+async fn fetch_lists(url: &str, token: Option<String>, game_id: Option<i64>) -> Lists {
+    #[derive(serde::Deserialize)]
+    struct Item {
+        id: i64,
+        name: String,
+    }
+    let mut lists = Lists::default();
+    let Ok(mut client) = Client::new(url, token) else {
+        return lists;
+    };
+    client.set_token_persistence(false);
+
+    if let Ok((games, _)) =
+        client.get_readonly::<(Vec<Item>, u64)>("game", &[("page_size", "100")]).await
+    {
+        lists.games = games.into_iter().map(|item| (item.id, item.name)).collect();
+    }
+
+    let Some(game_id) = game_id else { return lists };
+    let challenge_path = format!("game/{game_id}/challenge");
+    if let Ok((challenges, _)) = client.get_readonly::<(Vec<Item>, u64)>(&challenge_path, &[]).await
+    {
+        lists.challenges = challenges.into_iter().map(|item| (item.id, item.name)).collect();
+    }
+    let team_path = format!("game/{game_id}/team");
+    if let Ok((teams, _)) = client.get_readonly::<(Vec<Item>, u64)>(&team_path, &[]).await {
+        lists.teams = teams.into_iter().map(|item| (item.id, item.name)).collect();
+    }
+    lists
+}
+
+/// Commands whose side effects change profile/account/game caches.
+fn invalidates_lists(cli: &Cli) -> bool {
+    use crate::cli::{AccountCommand, Commands as Cmds, ProfileCommand};
+    match cli.command.as_ref() {
+        Some(Cmds::Profile { command }) => {
+            matches!(command, ProfileCommand::Add(_) | ProfileCommand::Use { .. })
+        }
+        Some(Cmds::Account { command }) => matches!(
+            command,
+            AccountCommand::Login(_)
+                | AccountCommand::Logout
+                | AccountCommand::Register(_)
+                | AccountCommand::Use { .. }
+                | AccountCommand::Remove(_)
+        ),
+        Some(Cmds::Game { command, .. }) => {
+            use crate::cli::GameCommand as Gc;
+            matches!(command, Gc::Select { .. })
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]

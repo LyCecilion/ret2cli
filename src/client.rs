@@ -167,6 +167,26 @@ impl Client {
         Ok(value)
     }
 
+    /// Send a GET request and deserialize the JSON response without touching
+    /// any persisted session state. In-memory token rotation still applies;
+    /// used by background prefetchers such as REPL completion.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError` on HTTP or serialization errors.
+    pub async fn get_readonly<T: DeserializeOwned>(
+        &mut self,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> CliResult<T> {
+        let response = self.request(Method::GET, path, query)?.send().await?;
+        let (value, new_token) = self.typed_response::<T>(response).await?;
+        if let Some(new) = new_token {
+            self.token = Some(new);
+        }
+        Ok(value)
+    }
+
     /// Send a GET request and return the raw JSON value.
     ///
     /// # Errors
