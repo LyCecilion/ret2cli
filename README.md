@@ -12,6 +12,23 @@ CLI client for [Ret2Shell](https://github.com/ret2shell/ret2shell) CTF platform.
 
 </div>
 
+注意到洛汐被第十九届全国大学生网络安全竞赛（CCISC 2026）气晕了，该项目停止维护。事实上，该项目的功能已近乎完备而可以投入正常使用。但你也可以选择仍在维护的 [Ret2Console](https://github.com/DeepslateQAQ/ret2console)。
+
+<div align="center">
+
+自诩精英而对他人冷嘲热讽的「正常人」，在我目力所不可及之处干着龌龊的勾当；<br/>
+而被视为「异类」而遭受指指点点的人们，有着比前者高尚数百万倍的坦荡与松弛。<br/>
+如此说来，我宁愿自己成为后者。成为不被理解之人。
+
+**公者千古，私者一时。**
+
+> 原谅我 / 原谅我落荒而逃 / 原谅我如此仓皇 / 没能继续坚强<br/>
+> 我也想 / 也曾想过和你远航 / 只是终究喑哑 / 唯有转身退场
+
+</div>
+
+---
+
 > [!WARNING]
 >
 > **免责声明 / DISCLAIMER**
