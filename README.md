@@ -6,7 +6,7 @@
 
 # 🚩 Ret2CLI 🖥
 
-CLI client for [Ret2Shell](https://github.com/ret2shell/ret2shell) CTF platform.
+[Ret2Shell](https://github.com/ret2shell/ret2shell) CTF 平台的 CLI 客户端
 
 </div>
 
