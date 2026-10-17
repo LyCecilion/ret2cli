@@ -10,6 +10,14 @@ Ret2CLI 的所有重要变更将记录在此文件中。格式基于 [Keep a Cha
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-17 - Solivault
+
+### Changed
+
+- 启用 v3.0.x 发布线，版本代号为 `Solivault`，同步更新命令行版本信息与发布附件展示名
+- 升级 `dirs` 至 7、`tabled` 至 0.22，并更新 clap、clap_complete、tokio、termimad、rustls、serde_json、winresource 等依赖
+- 更新 Nix flake 锁定依赖，精简 README 并调整中文项目介绍
+
 ## [2.0.0] - 2026-08-05 - TearJerker
 
 ### Added
