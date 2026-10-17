@@ -6,9 +6,7 @@
 
 # 🚩 Ret2CLI 🖥
 
-CLI client for [Ret2Shell](https://github.com/ret2shell/ret2shell) CTF platform.
-
-[![Typing SVG](https://readme-typing-svg.demolab.com?font=Cascadia+Code&duration=3000&pause=1000&center=true&vCenter=true&height=40&lines=%E5%A3%B0%E9%AB%98%E3%82%89%E3%81%8B%E3%81%AB%E3%80%81%E5%AE%A3%E8%AA%93%E5%B8%83%E5%91%8A%E3%81%A0;%E5%A4%96%E9%87%8E%E3%81%AF%E3%81%84%E3%82%89%E3%81%AA%E3%81%84;%E6%8C%87%E5%92%A5%E3%81%88%E3%81%A6%E3%81%8A%E9%9D%99%E3%81%8B%E3%81%AB;%E6%84%9B%E3%82%92%E7%9F%A5%E3%82%89%E3%81%AA%E3%81%84%E6%99%82%E4%BB%A3%E3%81%AF%E3%81%84%E3%82%89%E3%81%AA%E3%81%84;%E3%81%A8%E3%81%8D%E3%82%81%E3%81%8B%E3%81%9B%E3%81%A6+NewType)](https://git.io/typing-svg)
+[Ret2Shell](https://github.com/ret2shell/ret2shell) CTF 平台的 CLI 客户端
 
 </div>
 
@@ -16,20 +14,17 @@ CLI client for [Ret2Shell](https://github.com/ret2shell/ret2shell) CTF platform.
 >
 > **免责声明 / DISCLAIMER**
 >
-> 1. 该项目的代码 **完全** 使用 AI 生成，文档亦有 AI 辅助构建。参与的 Agent 包含 GPT-5.6 Sol 和 DeepSeek V4 Flash 0731。我们使用严格的 Harness 和单元测试保证 AI 生成的代码尽可能符合我们的预期，对代码和文档进行了 review 并人工测试了几乎所有功能，但并不保证代码的完善。
-> 2. 该项目与 Ret2Shell 实例的通信逻辑依照其官方文档和 Ret2Shell 源码。Ret2CLI 仅对官方 Ret2Shell 实例的通信进行了适配；若目标 Ret2Shell 实例安装了插件或进行了第三方配置，其行为可能发生变化，我们不对此情形做出功能性的担保。
-> 3. Ret2CLI **不会官方实现** 任何可能破坏比赛公平性的功能，如自动接入 AI 工具解题、爆破 Flag 等。
->
-> 该项目为 Project Hazelita 社群共创项目。
+> 1. . 该项目与 Ret2Shell 实例的通信逻辑依照其官方文档和 Ret2Shell 源码。Ret2CLI 仅对官方 Ret2Shell 实例的通信进行了适配；若目标 Ret2Shell 实例安装了插件或进行了第三方配置，其行为可能发生变化，我们不对此情形做出功能性的担保。
+> 2. Ret2CLI **不会官方实现** 任何可能破坏比赛公平性的功能，如自动接入 AI 工具解题、爆破 Flag 等。
 >
 
-## 📖 About
+## 📖 关于
 
 Ret2CLI 是适用于 [Ret2Shell](https://github.com/ret2shell/ret2shell) CTF 平台的 CLI 客户端，目标定位类似于 `gh` 之于 GitHub：让选手在终端内完成从登录、选赛、看题、提交 Flag 到管理队伍的全部流程，无须打开浏览器。
 
 Ret2CLI 采用与 Ret2Shell 相同的 Rust 技术栈，行为语义、均对照 Ret2Shell 服务端源码实现。
 
-## ✨ Features
+## ✨ 特性
 
 Ret2CLI 具有部分在浏览器中无法获得的使用体验，包括但不限于：
 
@@ -37,7 +32,7 @@ Ret2CLI 具有部分在浏览器中无法获得的使用体验，包括但不限
 - **终端内完成赛事：** 查看比赛与排行榜、浏览题目、提交 Flag、下载附件、管理队伍与查看提交记录，全程无需离开终端。
 - **交互式 REPL 和 JSON 输出：** 采用类解释器的命令提示符，与 one-line 子命令共用同一套语法；全局 `--json` 模式让 stdout 只输出一个 JSON 值，做到人类和脚本友好。
 
-## 👀 Preview
+## 👀 预览
 
 下面的 GIF 录制于 Ret2CLI 的开发阶段。正式版和开发版可能有部分差异。
 
@@ -51,9 +46,7 @@ agg --text-font-family "Maple Mono NF CN" --font-size 20 --line-height 1.2 --spe
 
 -->
 
-## 🚀 Quick Start
-
-## 📦 Manual Installation
+## 🚀 快速开始
 
 你可以手动安装 Ret2CLI。从 [Releases](https://github.com/LyCecilion/ret2cli/releases) 中取得 Windows x86_64、Linux x86_64/AArch64 或 macOS Intel/Apple Silicon 的压缩包后，可以直接使用其中的二进制文件或将其加入 PATH。
 
@@ -91,11 +84,11 @@ nix build .#ret2cli
 ./result/bin/ret2cli
 ```
 
-## 📝 Usage
+## 📝 使用指南
 
 完整使用指南参见 [USAGE](./USAGE.md)。
 
-## ⚙️ Configuration
+## ⚙️ 配置
 
 配置文件默认位于各平台的用户配置目录：
 
@@ -140,7 +133,7 @@ editor = "vim"          # 编辑器。将会被 `$VISUAL/$EDITOR` 覆盖。
 
 对于同一个配置项，命令行参数优先于环境变量，环境变量优先于配置文件。在三者均缺省时采用默认值。
 
-## 📁 Project Structure
+## 📁 项目架构
 
 ```text
 ret2cli/
@@ -169,9 +162,9 @@ ret2cli/
 └── LICENSE              MIT
 ```
 
-## 💻 Development
+## 💻 开发
 
-可参考 [上文](#-manual-installation) 安装 Rust 1.89+ 工具链。
+可参考 [上文](#-快速开始) 安装 Rust 1.89+ 工具链。
 
 | 命令 | 说明 |
 | --- | --- |
@@ -188,7 +181,7 @@ ret2cli/
 
 同一 `major.minor` 发布线共享 codename。正式 CI 编译的程序版本还会附加 `+build.<run_number>.<run_attempt>.g<short_sha>`，tag 与 Cargo.toml 则保持纯 SemVer。
 
-## 🧪 Testing
+## 🧪 测试
 
 测试全部为单元测试（`cargo test`），分布在各个模块的 `#[cfg(test)]` 中，覆盖：
 
@@ -208,12 +201,10 @@ cargo test
 
 参见 [CHANGELOG](./CHANGELOG.md)。
 
-## 🤝 Contributing
+## 🤝 贡献
 
 参见 [CONTRIBUTING](./CONTRIBUTING.md)。
 
-## 🙏 Acknowledgments
-
-## 📄 License
+## 📄 许可证
 
 本项目使用 [MIT LICENSE](./LICENSE)。
